@@ -1,0 +1,18 @@
+{
+  "name": "wgpu-testbed-webapp",
+  "version": "0.1.0",
+  "description": "A web app for testing the wasm32 target for wgpu-testbed-lib",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "start": "webpack-dev-server"
+  },
+  "author": "Hugo Woodiwiss <hj.woodiwiss@gmail.com>",
+  "devDependencies": {
+    "copy-webpack-plugin": "^14.0.0",
+    "prettier": "^3.8.3",
+    "webpack": "^5.107.2",
+    "webpack-cli": "^7.0.3",
+    "webpack-dev-server": "^5.2.4"
+  }
+}

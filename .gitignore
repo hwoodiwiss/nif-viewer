@@ -1,0 +1,12 @@
+/target
+**.spv
+**.sublime-project
+**.sublime-workspace
+/.vscode
+/*.png
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target

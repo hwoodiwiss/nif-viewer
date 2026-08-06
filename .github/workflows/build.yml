@@ -1,0 +1,32 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.gitattributes"
+      - "**/*.gitignore"
+      - "**/*.md"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build WebApp
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Install Wasm-Pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build Wasm Project
+        run: ./build.ps1
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-wasm-site
+          path: wgpu-testbed-webapp/dist
