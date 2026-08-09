@@ -37,6 +37,7 @@ web-sys = { version = "0.3.72", features = [
 	"HtmlAnchorElement",
 	"HtmlCanvasElement",
 	"HtmlElement",
+	"Node",
 	"Response",
 	"Url",
 	"Window",

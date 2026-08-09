@@ -71,7 +71,7 @@ pub struct State<'a> {
     instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
     depth_texture: Texture,
-    obj_model: Model,
+    obj_model: Option<Model>,
     screen_quad: Mesh,
     render_material: Material,
     light_settings: LightSettings,
@@ -328,38 +328,17 @@ impl<'a> State<'a> {
 
         let model_loader = ModelLoader::new(&device).await;
 
-        let obj_model = model_loader
-            .load(
-                &device,
-                &queue,
-                &texture_bind_group_layout,
-                "resources/cube/cube.obj",
-            )
-            .await
-            .unwrap();
+        // Start with an empty scene: nothing is drawn until a model is loaded
+        // (via NIF_PATH natively or the load APIs on wasm).
+        let obj_model = None;
 
-        const SPACE_BETWEEN: f32 = 3.0;
-        let instances = (0..INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..INSTANCES_PER_ROW).map(move |x| {
-                    let x = SPACE_BETWEEN * (x as f32 - INSTANCES_PER_ROW as f32 / 2.0);
-                    let z = SPACE_BETWEEN * (z as f32 - INSTANCES_PER_ROW as f32 / 2.0);
-
-                    let position = cgmath::Vector3 { x, y: 0.0, z } - INSTANCE_DISPLACEMENT;
-
-                    let rotation = if position.is_zero() {
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
-                    } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                    };
-
-                    Instance { position, rotation }
-                })
-            })
-            .collect::<Vec<_>>();
+        let instances = vec![Instance {
+            position: cgmath::Vector3::new(0.0, 0.0, 0.0),
+            rotation: cgmath::Quaternion::from_axis_angle(
+                cgmath::Vector3::unit_y(),
+                cgmath::Deg(0.0),
+            ),
+        }];
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
 
@@ -631,7 +610,7 @@ impl<'a> State<'a> {
             info!("camera speed set to {speed}");
         }
 
-        self.obj_model = model;
+        self.obj_model = Some(model);
         Ok(())
     }
 
@@ -833,12 +812,14 @@ impl<'a> State<'a> {
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.set_stencil_reference(64);
             render_pass.set_pipeline(&self.deferred_render_pipeline);
-            render_pass.draw_model_instanced(
-                &self.obj_model,
-                0..self.instances.len() as u32,
-                &self.uniform_bind_group,
-                &self.light_bind_group,
-            );
+            if let Some(model) = &self.obj_model {
+                render_pass.draw_model_instanced(
+                    model,
+                    0..self.instances.len() as u32,
+                    &self.uniform_bind_group,
+                    &self.light_bind_group,
+                );
+            }
         }
 
         if self.capture_next_frame {

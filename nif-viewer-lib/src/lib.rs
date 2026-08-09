@@ -638,10 +638,23 @@ fn start_web(canvas: Option<web_sys::HtmlCanvasElement>) {
 
     init_wasm_logging();
 
+    WASM_LIVE_CANVAS.with(|cell| {
+        *cell.borrow_mut() = canvas.clone();
+    });
+
     let evt_loop = EventLoop::new().expect("Failed to create event loop!");
     let mut app = App::new();
     app.canvas = canvas;
     evt_loop.spawn_app(app);
+}
+
+// The canvas owned by the (single, page-lifetime) winit event loop. winit
+// only allows one event loop per page, so subsequent `attach` calls re-home
+// this canvas into the new DOM location instead of starting over.
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static WASM_LIVE_CANVAS: RefCell<Option<web_sys::HtmlCanvasElement>> =
+        const { RefCell::new(None) };
 }
 
 /// Start the viewer, creating a new canvas appended to `<body>`.
@@ -652,6 +665,8 @@ pub fn run_wasm() {
 }
 
 /// Start the viewer attached to the existing `<canvas>` with the given element id.
+/// Safe to call again after DOM re-renders (e.g. SPA/Blazor navigation): the
+/// live rendering canvas is swapped into the new element's place.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn attach(canvas_id: &str) -> Result<(), JsValue> {
@@ -665,6 +680,25 @@ pub fn attach(canvas_id: &str) -> Result<(), JsValue> {
         .ok_or_else(|| JsValue::from_str(&format!("no element with id '{canvas_id}'")))?
         .dyn_into::<web_sys::HtmlCanvasElement>()
         .map_err(|_| JsValue::from_str(&format!("element '{canvas_id}' is not a <canvas>")))?;
+
+    // Re-attach path: the event loop already exists and owns a live canvas.
+    // Replace the freshly rendered placeholder canvas with it (unless it IS
+    // the same element, e.g. a plain double call).
+    let live = WASM_LIVE_CANVAS.with(|cell| cell.borrow().clone());
+    if let Some(live) = live {
+        if !live.is_same_node(Some(&canvas)) {
+            // Carry over identity/styling so page CSS keeps applying.
+            live.set_id(&canvas.id());
+            if let Some(style) = canvas.get_attribute("style") {
+                let _ = live.set_attribute("style", &style);
+            }
+            let _ = live.set_attribute("class", &canvas.class_name());
+            canvas
+                .replace_with_with_node_1(&live)
+                .map_err(|e| JsValue::from_str(&format!("failed to re-attach canvas: {e:?}")))?;
+        }
+        return Ok(());
+    }
 
     // winit does not resize user-supplied canvases; give the backing store a
     // real size from the CSS layout (or a sane default before layout) so the

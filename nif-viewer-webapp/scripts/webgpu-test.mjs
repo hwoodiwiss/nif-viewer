@@ -88,6 +88,17 @@ await page.goto("http://localhost:8123/", { waitUntil: "networkidle0" });
 await new Promise((r) => setTimeout(r, 3000)); // let wgpu init + first frames
 await page.screenshot({ path: "test-before-load.png" });
 
+// Re-attach must be idempotent (SPA/Blazor navigation re-calls attach).
+const reattach = await page.evaluate(() => {
+  try {
+    window.nifViewer.attach("nif-canvas");
+    return "ok";
+  } catch (e) {
+    return `failed: ${e}`;
+  }
+});
+console.log("re-attach:", reattach);
+
 const result = await page.evaluate(async (nifRel) => {
   const wasm = window.nifViewer;
   const nifBuf = new Uint8Array(

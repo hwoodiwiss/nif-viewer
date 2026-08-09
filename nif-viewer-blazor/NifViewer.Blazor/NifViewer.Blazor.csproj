@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>true</IsPackable>
     <PackageId>NifViewer.Blazor</PackageId>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.2</Version>
     <Description>Blazor WebAssembly component and JS interop wrapper for the wgpu-based NIF (Gamebryo/Starfield) model viewer compiled to WebAssembly.</Description>
     <Authors>Hugo Woodiwiss</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -45,7 +45,6 @@
     <Content Include="$(PkgWebDir)nif_viewer_lib.js" Link="wwwroot\nif_viewer_lib.js" Pack="false" />
     <Content Include="$(PkgWebDir)nif_viewer_lib_bg.wasm" Link="wwwroot\nif_viewer_lib_bg.wasm" Pack="false" />
     <Content Include="$(RepoRootDir)shaders\**\*.wgsl" Link="wwwroot\shaders\%(RecursiveDir)%(Filename)%(Extension)" Pack="false" />
-    <Content Include="$(RepoRootDir)resources\**\*" Link="wwwroot\resources\%(RecursiveDir)%(Filename)%(Extension)" Pack="false" />
   </ItemGroup>
 
   <Target Name="EnsureNifViewerWasmAssets" BeforeTargets="PrepareForBuild" DependsOnTargets="BuildNifViewerWasm">
