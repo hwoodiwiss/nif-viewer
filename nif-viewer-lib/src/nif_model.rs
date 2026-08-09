@@ -227,9 +227,14 @@ pub fn build_model(scene: &NifScene) -> BuiltModel {
     }
 }
 
-/// Normalize a resource path: lowercase, forward slashes.
+/// Normalize a resource path: lowercase, forward slashes, and remove the
+/// optional Data-root prefix used by some Creation Engine references.
 pub fn normalize_path(path: &str) -> String {
-    path.to_lowercase().replace('\\', "/")
+    let mut normalized = path.to_lowercase().replace('\\', "/");
+    while let Some(rest) = normalized.strip_prefix("data/") {
+        normalized = rest.to_string();
+    }
+    normalized
 }
 
 /// Heuristic texture paths derived from a Starfield `.mat` path.
@@ -329,6 +334,12 @@ mod tests {
             Some(&vec![2u8])
         );
         assert!(lookup_file(&files, "geometries/ab/missing.mesh").is_none());
+    }
+
+    #[test]
+    fn normalize_strips_data_prefix() {
+        assert_eq!(normalize_path("Data\\Textures\\Foo.DDS"), "textures/foo.dds");
+        assert_eq!(normalize_path("data/data/geometries/foo.mesh"), "geometries/foo.mesh");
     }
 }
 
