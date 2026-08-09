@@ -1,0 +1,19 @@
+<Project>
+
+  <!--
+    Properties for building the Rust wasm module (wasm-pack, target=web) as
+    part of the NifViewer.Blazor build. Override on the command line or in a
+    Directory.Build.props if needed.
+  -->
+  <PropertyGroup>
+    <NifViewerRepoRoot>$(MSBuildThisFileDirectory)..\..\</NifViewerRepoRoot>
+    <NifViewerRustLibDir>$(NifViewerRepoRoot)nif-viewer-lib\</NifViewerRustLibDir>
+    <NifViewerPkgWebDir>$(NifViewerRustLibDir)pkg-web\</NifViewerPkgWebDir>
+    <NifViewerWasmOutput>$(NifViewerPkgWebDir)nif_viewer_lib_bg.wasm</NifViewerWasmOutput>
+    <NifViewerWasmJsOutput>$(NifViewerPkgWebDir)nif_viewer_lib.js</NifViewerWasmJsOutput>
+    <NifViewerRustFlags>--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"</NifViewerRustFlags>
+    <!-- Set to true to skip invoking wasm-pack (e.g. CI legs that only consume a prebuilt pkg-web). -->
+    <SkipNifViewerWasmBuild Condition="'$(SkipNifViewerWasmBuild)' == ''">false</SkipNifViewerWasmBuild>
+  </PropertyGroup>
+
+</Project>

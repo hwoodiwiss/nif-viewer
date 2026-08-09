@@ -1,0 +1,233 @@
+@using System.Text.Json
+
+<div class="nif-structure">
+    @if (Structure is not { } s)
+    {
+        <p class="nif-structure-empty">No structure loaded.</p>
+    }
+    else
+    {
+        <div class="nif-structure-header">
+            <span><strong>@GetString(s, "headerString")</strong></span>
+            <span>version @GetString(s, "version")</span>
+            <span>BS @GetProp(s, "bsVersion")</span>
+            <span>user @GetProp(s, "userVersion")</span>
+            <span>@GetProp(s, "numBlocks") blocks</span>
+        </div>
+
+        foreach (var root in Roots(s))
+        {
+            @Node(s, root, [])
+        }
+
+        var unreferenced = Unreferenced(s);
+        if (unreferenced.Count > 0)
+        {
+            <details class="nif-structure-section">
+                <summary>Unreferenced (@unreferenced.Count)</summary>
+                <div class="nif-structure-children">
+                    @foreach (var idx in unreferenced)
+                    {
+                        @Node(s, idx, [])
+                    }
+                </div>
+            </details>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Structure object from <see cref="NifViewerInterop.ParseNifStructureAsync"/>.
+    /// </summary>
+    [Parameter]
+    public JsonElement? Structure { get; set; }
+
+    private const int MaxFieldDepth = 6;
+
+    private RenderFragment Node(JsonElement s, int index, HashSet<int> path) => __builder =>
+    {
+        if (!TryGetBlock(s, index, out var block))
+        {
+            <div class="nif-structure-badref">[@index] (invalid ref)</div>
+            return;
+        }
+        if (!path.Add(index))
+        {
+            <div class="nif-structure-badref">[@index] (cycle)</div>
+            return;
+        }
+
+        var type = GetString(block, "type");
+        var name = GetString(block, "name");
+        var children = Children(block);
+
+        <details class="nif-structure-node">
+            <summary>
+                <span class="nif-structure-index">[@index]</span>
+                <span class="nif-structure-type">@type</span>
+                @if (!string.IsNullOrEmpty(name))
+                {
+                    <span class="nif-structure-name">— @name</span>
+                }
+                <span class="nif-structure-size">@GetProp(block, "size") B</span>
+            </summary>
+            @if (block.TryGetProperty("fields", out var fields) && fields.ValueKind == JsonValueKind.Object)
+            {
+                @FieldTable(fields, 0)
+            }
+            @if (children.Count > 0)
+            {
+                <div class="nif-structure-children">
+                    @foreach (var child in children)
+                    {
+                        @Node(s, child, [.. path])
+                    }
+                </div>
+            }
+        </details>
+
+        path.Remove(index);
+    };
+
+    private RenderFragment FieldTable(JsonElement obj, int depth) => __builder =>
+    {
+        <table class="nif-structure-fields">
+            <tbody>
+                @foreach (var prop in obj.EnumerateObject())
+                {
+                    <tr>
+                        <td class="nif-structure-key">@prop.Name</td>
+                        <td>@FieldValue(prop.Value, depth + 1)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    };
+
+    private RenderFragment FieldValue(JsonElement value, int depth) => __builder =>
+    {
+        if (depth > MaxFieldDepth)
+        {
+            <span class="nif-structure-muted">…</span>
+            return;
+        }
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                @FieldTable(value, depth)
+                break;
+            case JsonValueKind.Array:
+                if (value.GetArrayLength() == 0)
+                {
+                    <span class="nif-structure-muted">[]</span>
+                }
+                else if (IsScalarArray(value))
+                {
+                    <span>[@string.Join(", ", value.EnumerateArray().Select(FormatScalar))]</span>
+                }
+                else
+                {
+                    <ol class="nif-structure-array" start="0">
+                        @foreach (var item in value.EnumerateArray())
+                        {
+                            <li>@FieldValue(item, depth + 1)</li>
+                        }
+                    </ol>
+                }
+                break;
+            default:
+                <span>@FormatScalar(value)</span>
+                break;
+        }
+    };
+
+    private static bool IsScalarArray(JsonElement array) =>
+        array.EnumerateArray().All(e =>
+            e.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array));
+
+    private static string FormatScalar(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null => "null",
+        JsonValueKind.String => value.GetString() ?? "",
+        _ => value.GetRawText(),
+    };
+
+    private static string GetString(JsonElement obj, string name) =>
+        obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            ? v.GetString() ?? ""
+            : "";
+
+    private static string GetProp(JsonElement obj, string name) =>
+        obj.TryGetProperty(name, out var v) ? v.GetRawText() : "";
+
+    private static bool TryGetBlock(JsonElement s, int index, out JsonElement block)
+    {
+        block = default;
+        if (index < 0
+            || !s.TryGetProperty("blocks", out var blocks)
+            || blocks.ValueKind != JsonValueKind.Array
+            || index >= blocks.GetArrayLength())
+        {
+            return false;
+        }
+        block = blocks[index];
+        return true;
+    }
+
+    private static List<int> Roots(JsonElement s)
+    {
+        var roots = new List<int>();
+        if (s.TryGetProperty("roots", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var r in arr.EnumerateArray())
+            {
+                if (r.TryGetInt32(out var i) && i >= 0)
+                {
+                    roots.Add(i);
+                }
+            }
+        }
+        return roots;
+    }
+
+    private static List<int> Children(JsonElement block)
+    {
+        var children = new List<int>();
+        if (block.TryGetProperty("children", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var c in arr.EnumerateArray())
+            {
+                if (c.TryGetInt32(out var i) && i >= 0)
+                {
+                    children.Add(i);
+                }
+            }
+        }
+        return children;
+    }
+
+    private static List<int> Unreferenced(JsonElement s)
+    {
+        if (!s.TryGetProperty("blocks", out var blocks) || blocks.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+        var count = blocks.GetArrayLength();
+        var reachable = new HashSet<int>();
+        var stack = new Stack<int>(Roots(s));
+        while (stack.Count > 0)
+        {
+            var idx = stack.Pop();
+            if (idx < 0 || idx >= count || !reachable.Add(idx))
+            {
+                continue;
+            }
+            foreach (var child in Children(blocks[idx]))
+            {
+                stack.Push(child);
+            }
+        }
+        return [.. Enumerable.Range(0, count).Where(i => !reachable.Contains(i))];
+    }
+}

@@ -6,7 +6,7 @@ updates:
       interval: daily
 
   - package-ecosystem: npm
-    directory: /wgpu-testbed-webapp
+    directory: /nif-viewer-webapp
     schedule:
       interval: daily
 

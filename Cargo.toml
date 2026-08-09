@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "wgpu-testbed-lib",
-    "wgpu-testbed-app",
+    "nif-viewer-lib",
+    "nif-viewer-app",
 ]
-default-members = ["wgpu-testbed-lib", "wgpu-testbed-app"]
+default-members = ["nif-viewer-lib", "nif-viewer-app"]

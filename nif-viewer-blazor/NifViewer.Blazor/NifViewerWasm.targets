@@ -1,0 +1,33 @@
+<Project>
+
+  <!--
+    Rebuilds nif-viewer-lib/pkg-web (wasm-pack, target=web) when any Rust
+    source, manifest, or runtime shader is newer than the wasm output, so the
+    packaged static web assets can never go stale. Incremental via MSBuild
+    Inputs/Outputs timestamp comparison; the actual cargo build inside
+    wasm-pack is itself incremental.
+  -->
+  <ItemGroup>
+    <NifViewerWasmInput Include="$(NifViewerRustLibDir)src\**\*.rs" />
+    <NifViewerWasmInput Include="$(NifViewerRustLibDir)Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRustLibDir)build.rs" Condition="Exists('$(NifViewerRustLibDir)build.rs')" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.lock" Condition="Exists('$(NifViewerRepoRoot)Cargo.lock')" />
+  </ItemGroup>
+
+  <Target Name="BuildNifViewerWasm"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(SkipNifViewerWasmBuild)' != 'true'"
+          Inputs="@(NifViewerWasmInput)"
+          Outputs="$(NifViewerWasmOutput);$(NifViewerWasmJsOutput)">
+    <Message Importance="high" Text="Rust sources newer than pkg-web - running wasm-pack (target=web)..." />
+    <Exec Command="wasm-pack build --release --target web --out-dir pkg-web"
+          WorkingDirectory="$(NifViewerRustLibDir)"
+          EnvironmentVariables="RUSTFLAGS=$(NifViewerRustFlags)"
+          IgnoreStandardErrorWarningFormat="true" />
+    <!-- wasm-pack does not always bump mtimes when cargo output is unchanged;
+         touch the outputs so MSBuild's up-to-date check settles. -->
+    <Touch Files="$(NifViewerWasmOutput);$(NifViewerWasmJsOutput)" />
+  </Target>
+
+</Project>

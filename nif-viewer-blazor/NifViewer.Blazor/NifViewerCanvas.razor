@@ -1,0 +1,31 @@
+@using Microsoft.AspNetCore.Components
+@inject NifViewerInterop Interop
+
+<canvas id="@Id" style="@Style"></canvas>
+
+@code {
+    /// <summary>Canvas element id; auto-generated if not set.</summary>
+    [Parameter]
+    public string Id { get; set; } = $"nif-canvas-{Guid.NewGuid():N}";
+
+    /// <summary>Inline style for the canvas.</summary>
+    [Parameter]
+    public string Style { get; set; } = "width: 100%; aspect-ratio: 16/9;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Interop.InitializeAsync();
+            await Interop.AttachAsync(Id);
+        }
+    }
+
+    /// <summary>Load a NIF into this viewer.</summary>
+    public Task<NifLoadResult> LoadNifAsync(string name, byte[] nif, INifDependencyResolver? resolver = null) =>
+        Interop.LoadNifAsync(name, nif, resolver);
+
+    public Task SetCameraSpeedAsync(float speed) => Interop.SetCameraSpeedAsync(speed);
+
+    public Task SetLightAsync(NifLightSettings settings) => Interop.SetLightAsync(settings);
+}

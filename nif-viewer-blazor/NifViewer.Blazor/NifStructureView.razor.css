@@ -1,0 +1,103 @@
+.nif-structure {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 0.8rem;
+    color: #d4d4d4;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.5rem;
+    overflow: auto;
+}
+
+.nif-structure-empty {
+    color: #808080;
+    margin: 0.25rem;
+}
+
+.nif-structure-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.25rem 0.25rem 0.5rem;
+    border-bottom: 1px solid #333;
+    margin-bottom: 0.5rem;
+    color: #9cdcfe;
+}
+
+.nif-structure-node,
+.nif-structure-section {
+    margin: 0.1rem 0;
+}
+
+.nif-structure-node > summary,
+.nif-structure-section > summary {
+    cursor: pointer;
+    padding: 0.15rem 0.25rem;
+    border-radius: 3px;
+    user-select: none;
+}
+
+.nif-structure-node > summary:hover,
+.nif-structure-section > summary:hover {
+    background: #2a2d2e;
+}
+
+.nif-structure-node > summary:focus-visible,
+.nif-structure-section > summary:focus-visible {
+    outline: 1px solid #007fd4;
+}
+
+.nif-structure-index {
+    color: #808080;
+}
+
+.nif-structure-type {
+    color: #4ec9b0;
+}
+
+.nif-structure-name {
+    color: #ce9178;
+}
+
+.nif-structure-size {
+    color: #606060;
+    margin-left: 0.5rem;
+    font-size: 0.7rem;
+}
+
+.nif-structure-children {
+    margin-left: 1.1rem;
+    border-left: 1px solid #333;
+    padding-left: 0.4rem;
+}
+
+.nif-structure-fields {
+    margin: 0.2rem 0 0.3rem 1.5rem;
+    border-collapse: collapse;
+}
+
+.nif-structure-fields td {
+    padding: 0.1rem 0.5rem 0.1rem 0;
+    vertical-align: top;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.nif-structure-key {
+    color: #9cdcfe;
+    white-space: nowrap;
+}
+
+.nif-structure-array {
+    margin: 0;
+    padding-left: 1.5rem;
+    color: #d4d4d4;
+}
+
+.nif-structure-muted {
+    color: #606060;
+}
+
+.nif-structure-badref {
+    color: #f48771;
+    padding: 0.15rem 0.25rem;
+}

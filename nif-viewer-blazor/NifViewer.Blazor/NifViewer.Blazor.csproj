@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <Import Project="NifViewerWasm.props" />
+
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>true</IsPackable>
+    <PackageId>NifViewer.Blazor</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Description>Blazor WebAssembly component and JS interop wrapper for the wgpu-based NIF (Gamebryo/Starfield) model viewer compiled to WebAssembly.</Description>
+    <Authors>Hugo Woodiwiss</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/hugowoodiwiss/nif-viewer</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="11.0.0-preview.6.26359.118" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PkgWebDir>$(NifViewerPkgWebDir)</PkgWebDir>
+    <RepoRootDir>$(NifViewerRepoRoot)</RepoRootDir>
+  </PropertyGroup>
+
+  <!--
+    The wasm-pack (target=web) output plus the runtime-fetched shaders/ and
+    resources/ trees are linked into wwwroot so they ship as static web
+    assets under _content/NifViewer.Blazor/. Pack="false" avoids duplicating
+    them as plain NuGet content; the static-web-asset targets pack them.
+  -->
+  <ItemGroup>
+    <Content Include="$(PkgWebDir)nif_viewer_lib.js" Link="wwwroot\nif_viewer_lib.js" Pack="false" />
+    <Content Include="$(PkgWebDir)nif_viewer_lib_bg.wasm" Link="wwwroot\nif_viewer_lib_bg.wasm" Pack="false" />
+    <Content Include="$(RepoRootDir)shaders\**\*.wgsl" Link="wwwroot\shaders\%(RecursiveDir)%(Filename)%(Extension)" Pack="false" />
+    <Content Include="$(RepoRootDir)resources\**\*" Link="wwwroot\resources\%(RecursiveDir)%(Filename)%(Extension)" Pack="false" />
+  </ItemGroup>
+
+  <Target Name="EnsureNifViewerWasmAssets" BeforeTargets="PrepareForBuild" DependsOnTargets="BuildNifViewerWasm">
+    <Error Condition="!Exists('$(PkgWebDir)nif_viewer_lib.js') Or !Exists('$(PkgWebDir)nif_viewer_lib_bg.wasm')"
+           Text="nif-viewer-lib/pkg-web is missing. The BuildNifViewerWasm target should have produced it (is wasm-pack installed and on PATH, or was SkipNifViewerWasmBuild=true set without a prebuilt pkg-web?)." />
+  </Target>
+
+  <Import Project="NifViewerWasm.targets" />
+
+</Project>

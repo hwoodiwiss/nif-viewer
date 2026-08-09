@@ -29,4 +29,4 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: publish-wasm-site
-          path: wgpu-testbed-webapp/dist
+          path: nif-viewer-webapp/dist

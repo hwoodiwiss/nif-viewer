@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Hugo Woodiwiss | NIF Viewer</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 1rem;
+        background: #1e1e1e;
+        color: #ddd;
+        font-family: system-ui, sans-serif;
+      }
+      #toolbar, .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+      }
+      #toolbar label, .controls label {
+        font-size: 0.85rem;
+      }
+      button {
+        background: #333;
+        color: #ddd;
+        border: 1px solid #555;
+        padding: 0.3rem 0.8rem;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #444;
+      }
+      #status {
+        font-size: 0.85rem;
+        color: #9a9;
+      }
+      #nif-canvas {
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: #111;
+        display: block;
+      }
+      #structure-panel {
+        margin-top: 0.75rem;
+        font-size: 0.82rem;
+      }
+      #structure-panel > details > summary {
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0.25rem 0;
+      }
+      #structure-header {
+        color: #8ab;
+        margin: 0.25rem 0 0.5rem;
+      }
+      .nif-block > summary {
+        cursor: pointer;
+        padding: 0.1rem 0.25rem;
+        border-radius: 3px;
+      }
+      .nif-block > summary:hover {
+        background: #2a2a2a;
+      }
+      .nif-block {
+        margin-left: 1.1rem;
+        border-left: 1px solid #333;
+        padding-left: 0.35rem;
+      }
+      .nif-type {
+        color: #7cb;
+      }
+      .nif-name {
+        color: #ca8;
+      }
+      .nif-idx {
+        color: #777;
+      }
+      .nif-leaf {
+        margin-left: 1.1rem;
+        color: #888;
+        padding: 0.1rem 0.25rem;
+      }
+      table.nif-fields {
+        border-collapse: collapse;
+        margin: 0.2rem 0 0.4rem 1.2rem;
+      }
+      table.nif-fields td {
+        border: 1px solid #333;
+        padding: 0.1rem 0.45rem;
+        vertical-align: top;
+      }
+      table.nif-fields td:first-child {
+        color: #9a9;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript
+      >This page contains webassembly and javascript content, please enable
+      javascript in your browser.</noscript
+    >
+    <div id="toolbar">
+      <label>NIF: <input type="file" id="nif-file" accept=".nif" /></label>
+      <label>Deps: <input type="file" id="dep-files" multiple /></label>
+      <button id="data-root-btn" title="Grant access to your extracted data root (containing geometries/, materials/, textures/); dependencies are looked up on demand">Choose data root…</button>
+      <label id="dep-dir-label"
+        >Data folder:
+        <input type="file" id="dep-dir" webkitdirectory multiple
+      /></label>
+      <button id="load-btn">Load</button>
+      <span id="status"></span>
+    </div>
+    <div class="controls">
+      <label>Speed:
+        <input type="number" id="cam-speed" min="0.001" step="0.1" value="0.2" style="width: 4.5rem" />
+      </label>
+      <label>Light: <input type="color" id="light-color" value="#ffffff" /></label>
+      <label>Azimuth:
+        <input type="range" id="light-azimuth" min="0" max="360" step="1" value="240" />
+      </label>
+      <label>Elevation:
+        <input type="range" id="light-elevation" min="-89" max="89" step="1" value="55" />
+      </label>
+      <label>Intensity:
+        <input type="range" id="light-intensity" min="0" max="20" step="0.1" value="8" />
+      </label>
+      <label>Auto-orbit:
+        <input type="checkbox" id="light-orbit" checked />
+      </label>
+    </div>
+    <canvas id="nif-canvas"></canvas>
+    <div id="structure-panel"></div>
+    <script src="./bootstrap.js"></script>
+  </body>
+</html>

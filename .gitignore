@@ -5,6 +5,14 @@
 /.vscode
 /*.png
 
+# wasm-pack output for the Blazor package (pkg/ self-ignores via its own .gitignore)
+/nif-viewer-lib/pkg-web/
+
+# NuGet pack output
+/artifacts/
+/nif-viewer-blazor/**/bin/
+/nif-viewer-blazor/**/obj/
+
 # Added by cargo
 #
 # already existing elements were commented out
