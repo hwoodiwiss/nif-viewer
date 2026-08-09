@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>true</IsPackable>
     <PackageId>NifViewer.Blazor</PackageId>
-    <Version>0.1.0-preview.3</Version>
+    <Version>0.1.0-preview.4</Version>
     <Description>Blazor WebAssembly component and JS interop wrapper for the wgpu-based NIF (Gamebryo/Starfield) model viewer compiled to WebAssembly.</Description>
     <Authors>Hugo Woodiwiss</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

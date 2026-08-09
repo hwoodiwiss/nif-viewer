@@ -1,0 +1,181 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="nif-controls">
+    <label>Speed:
+        <input type="number" min="0.001" step="0.1" value="@_speed"
+               @onchange="OnSpeedChangedAsync" class="nif-controls-speed" />
+    </label>
+    <label>Light:
+        <input type="color" value="@_color" @oninput="OnColorChangedAsync" />
+    </label>
+    <label>Azimuth:
+        <input type="range" min="0" max="360" step="1" value="@_azimuth"
+               @oninput="OnAzimuthChangedAsync" />
+    </label>
+    <label>Elevation:
+        <input type="range" min="-89" max="89" step="1" value="@_elevation"
+               @oninput="OnElevationChangedAsync" />
+    </label>
+    <label>Intensity:
+        <input type="range" min="0" max="20" step="0.1" value="@_intensity"
+               @oninput="OnIntensityChangedAsync" />
+    </label>
+    <label>Ambient:
+        <input type="range" min="0" max="1" step="0.01" value="@_ambient"
+               @oninput="OnAmbientChangedAsync" />
+    </label>
+    <label>Auto-orbit:
+        <input type="checkbox" checked="@_autoOrbit" @onchange="OnAutoOrbitChangedAsync" />
+    </label>
+</div>
+
+@code {
+    /// <summary>The viewer these controls drive.</summary>
+    [Parameter, EditorRequired]
+    public NifViewerCanvas? Viewer { get; set; }
+
+    // Defaults mirror the Rust renderer: direction (-0.4, -0.8, -0.45),
+    // white light, intensity 8, ambient 0.25, auto-orbit on. Azimuth and
+    // elevation are derived from that direction using the inverse of the
+    // webapp's direction math (x = cos(el)cos(az), z = cos(el)sin(az),
+    // y = -sin(el)).
+    private static readonly (double Azimuth, double Elevation) DefaultAngles = AnglesFromDirection(-0.4, -0.8, -0.45);
+
+    private double _speed = 0.2;
+    private string _color = "#ffffff";
+    private double _azimuth = DefaultAngles.Azimuth;
+    private double _elevation = DefaultAngles.Elevation;
+    private double _intensity = 8;
+    private double _ambient = 0.25;
+    private bool _autoOrbit = true;
+
+    private static (double Azimuth, double Elevation) AnglesFromDirection(double x, double y, double z)
+    {
+        double length = Math.Sqrt(x * x + y * y + z * z);
+        double elevation = Math.Asin(-y / length) * 180.0 / Math.PI;
+        double azimuth = Math.Atan2(z, x) * 180.0 / Math.PI;
+        if (azimuth < 0)
+        {
+            azimuth += 360.0;
+        }
+
+        return (Math.Round(azimuth), Math.Round(elevation));
+    }
+
+    private async Task OnSpeedChangedAsync(ChangeEventArgs e)
+    {
+        if (!TryParse(e, out double speed) || speed <= 0)
+        {
+            return;
+        }
+
+        _speed = speed;
+        if (Viewer is not null)
+        {
+            await Viewer.SetCameraSpeedAsync((float)speed);
+        }
+    }
+
+    private Task OnColorChangedAsync(ChangeEventArgs e)
+    {
+        _color = e.Value as string ?? _color;
+        return PushLightAsync();
+    }
+
+    private Task OnAzimuthChangedAsync(ChangeEventArgs e)
+    {
+        if (TryParse(e, out double azimuth))
+        {
+            _azimuth = azimuth;
+            // Explicit direction change: turn auto-orbit off (webapp parity).
+            _autoOrbit = false;
+        }
+
+        return PushLightAsync();
+    }
+
+    private Task OnElevationChangedAsync(ChangeEventArgs e)
+    {
+        if (TryParse(e, out double elevation))
+        {
+            _elevation = elevation;
+            _autoOrbit = false;
+        }
+
+        return PushLightAsync();
+    }
+
+    private Task OnIntensityChangedAsync(ChangeEventArgs e)
+    {
+        if (TryParse(e, out double intensity))
+        {
+            _intensity = intensity;
+        }
+
+        return PushLightAsync();
+    }
+
+    private Task OnAmbientChangedAsync(ChangeEventArgs e)
+    {
+        if (TryParse(e, out double ambient))
+        {
+            _ambient = ambient;
+        }
+
+        return PushLightAsync();
+    }
+
+    private Task OnAutoOrbitChangedAsync(ChangeEventArgs e)
+    {
+        _autoOrbit = e.Value is true;
+        return PushLightAsync();
+    }
+
+    private async Task PushLightAsync()
+    {
+        if (Viewer is null)
+        {
+            return;
+        }
+
+        (float r, float g, float b) = ParseColor(_color);
+
+        // Direction the light TRAVELS: elevation > 0 means light shines
+        // downwards. Matches the webapp's math exactly.
+        double az = _azimuth * Math.PI / 180.0;
+        double el = _elevation * Math.PI / 180.0;
+        float x = (float)(Math.Cos(el) * Math.Cos(az));
+        float z = (float)(Math.Cos(el) * Math.Sin(az));
+        float y = (float)(-Math.Sin(el));
+
+        await Viewer.SetLightAsync(new NifLightSettings
+        {
+            R = r,
+            G = g,
+            B = b,
+            DirectionX = x,
+            DirectionY = y,
+            DirectionZ = z,
+            Intensity = (float)_intensity,
+            Ambient = (float)_ambient,
+            AutoOrbit = _autoOrbit,
+        });
+    }
+
+    private static (float R, float G, float B) ParseColor(string hex)
+    {
+        if (hex.Length == 7 && hex[0] == '#'
+            && byte.TryParse(hex.AsSpan(1, 2), System.Globalization.NumberStyles.HexNumber, null, out byte r)
+            && byte.TryParse(hex.AsSpan(3, 2), System.Globalization.NumberStyles.HexNumber, null, out byte g)
+            && byte.TryParse(hex.AsSpan(5, 2), System.Globalization.NumberStyles.HexNumber, null, out byte b))
+        {
+            return (r / 255f, g / 255f, b / 255f);
+        }
+
+        return (1f, 1f, 1f);
+    }
+
+    private static bool TryParse(ChangeEventArgs e, out double value) =>
+        double.TryParse(e.Value as string, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out value);
+}

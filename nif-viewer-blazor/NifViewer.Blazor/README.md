@@ -53,6 +53,18 @@ await _viewer.SetCameraSpeedAsync(2.0f);
 await _viewer.SetLightAsync(new NifLightSettings { Intensity = 8f, Ambient = 0.25f, AutoOrbit = true });
 ```
 
+Or drop in the ready-made control bar (camera speed, light colour,
+azimuth/elevation, intensity, ambient, auto-orbit — defaults match the
+renderer's):
+
+```razor
+<NifViewerCanvas @ref="_viewer" />
+<NifViewerControls Viewer="_viewer" />
+```
+
+Moving the azimuth or elevation slider turns auto-orbit off, matching the
+standalone webapp's behaviour.
+
 ## Structure introspection
 
 `NifStructureView` renders the raw block graph of a NIF (header summary plus
