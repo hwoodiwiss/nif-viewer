@@ -36,21 +36,25 @@ export async function init() {
   }
 }
 
-export function attach(canvasId) {
+export async function attach(canvasId) {
+  await init();
   wasm.attach(canvasId);
 }
 
-export function setCameraSpeed(speed) {
+export async function setCameraSpeed(speed) {
+  await init();
   wasm.set_camera_speed(speed);
 }
 
-export function setLight(r, g, b, x, y, z, intensity, ambient, autoOrbit) {
+export async function setLight(r, g, b, x, y, z, intensity, ambient, autoOrbit) {
+  await init();
   wasm.set_light(r, g, b, x, y, z, intensity, ambient, autoOrbit);
 }
 
 // Parse the raw NIF block structure (header, blocks, refs) without rendering.
-// Requires init() to have completed. Returns a plain JS object.
-export function parseNifStructure(bytes) {
+// Returns a plain JS object.
+export async function parseNifStructure(bytes) {
+  await init();
   return wasm.parse_nif_structure(bytes);
 }
 
@@ -66,15 +70,26 @@ function streamBytes(path, bytes) {
 }
 
 // Ask the .NET resolver for a dependency's bytes; null/undefined = not found.
+// .NET byte[] results arrive as base64 strings over the JSON interop channel.
 async function resolve(resolverRef, path) {
   if (!resolverRef) return null;
-  const bytes = await resolverRef.invokeMethodAsync("ResolveAsync", path);
-  return bytes == null ? null : new Uint8Array(bytes);
+  const result = await resolverRef.invokeMethodAsync("ResolveAsync", path);
+  if (result == null) return null;
+  if (typeof result === "string") {
+    const binary = atob(result);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+  return new Uint8Array(result);
 }
 
 // Full session loop, mirroring nif-viewer-webapp/index.js:
 // begin -> pending rounds -> texture hints -> finish. Returns { missing }.
 export async function loadNif(name, nifBytes, resolverRef) {
+  await init();
   wasm.load_session_begin(name, nifBytes);
 
   const missing = new Set();
@@ -84,6 +99,7 @@ export async function loadNif(name, nifBytes, resolverRef) {
 
     let progressed = false;
     for (const path of pending) {
+      console.debug(`nif-viewer: resolving ${path}`);
       const bytes = await resolve(resolverRef, path);
       if (!bytes) {
         missing.add(path);
@@ -102,6 +118,7 @@ export async function loadNif(name, nifBytes, resolverRef) {
     for (const kind of ["color", "normal", "rough", "metal", "ao"]) {
       const path = hint[kind];
       if (!path) continue;
+      console.debug(`nif-viewer: resolving texture hint ${path}`);
       const bytes = await resolve(resolverRef, path);
       if (bytes) streamBytes(path, bytes);
     }
