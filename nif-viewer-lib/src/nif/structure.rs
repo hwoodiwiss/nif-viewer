@@ -81,7 +81,7 @@ fn net_children(net: &ObjectNet) -> Vec<i32> {
 fn av_fields(av: &AvObject) -> Value {
     json!({
         "name": av.net.name,
-        "flags": av.flags,
+        "flags": av.flags.bits(),
         "translation": av.translation,
         "rotation": av.rotation,
         "scale": av.scale,
@@ -155,6 +155,36 @@ fn block_details(block: &Block) -> (Option<&str>, Value, Vec<i32>) {
                 ),
                 refs,
             )
+        }
+        Block::TriStrips {
+            av,
+            material,
+            lighting,
+            data,
+        } => {
+            let mut refs = net_children(&av.net);
+            push_refs(&mut refs, &[*material, *lighting, *data]);
+            (
+                Some(av.name()),
+                merge(
+                    av_fields(av),
+                    json!({
+                        "materialRef": material,
+                        "lightingRef": lighting,
+                        "dataRef": data,
+                    }),
+                ),
+                refs,
+            )
+        }
+        Block::TriStripsData {
+            av,
+            keep_flags: _,
+            compress_flags: _,
+            vertices: _,
+        } => {
+            let refs = net_children(&av.net);
+            (Some(av.name()), av_fields(av), refs)
         }
         Block::Geometry {
             av,

@@ -2,7 +2,8 @@
 
 use std::convert::TryFrom;
 
-use log::{debug, warn};
+use bitflags::bitflags;
+use log::{debug, info, warn};
 
 use super::mesh::{parse_mesh_reader, MeshData};
 use super::reader::{NifError, Reader, Result};
@@ -10,6 +11,7 @@ use super::{Geometry, MaterialInfo, NifMeshInstance, NifScene};
 
 const NIF_VERSION: u32 = 0x1402_0007;
 
+#[derive(Debug)]
 pub(super) struct Header {
     pub header_string: String,
     pub version: u32,
@@ -102,7 +104,7 @@ pub(super) struct ObjectNet {
 #[derive(Debug, Clone)]
 pub(super) struct AvObject {
     pub net: ObjectNet,
-    pub flags: u32,
+    pub flags: AvFlags,
     pub translation: [f32; 3],
     /// Row-major 3x3 rotation (rows of basis vectors).
     pub rotation: [[f32; 3]; 3],
@@ -126,6 +128,7 @@ pub(super) struct GeoLod {
     pub path: Option<String>,
 }
 
+#[derive(Debug)]
 pub(super) enum GeoSource {
     Embedded(MeshData),
     External {
@@ -136,6 +139,7 @@ pub(super) enum GeoSource {
     None,
 }
 
+#[derive(Debug)]
 pub(super) enum Block {
     Node {
         av: AvObject,
@@ -150,6 +154,26 @@ pub(super) enum Block {
         num_triangles: u32,
         num_vertices: u32,
         mesh: MeshData,
+    },
+    TriStrips {
+        av: AvObject,
+        material: i32,
+        lighting: i32,
+        data: i32,
+    },
+    TriStripsData {
+        av: AvObject,
+        keep_flags: TriShapeFlags,
+        compress_flags: u8,
+        vertices: Vec<[f32; 3]>,
+        // num_uv_sets: u8,
+        // has_normals: bool,
+        // normals: Vec<[f32; 3]>,
+        // num_triangles: u32,
+        // num_strips: u16,
+        // strip_lengths: Vec<u16>,
+        // has_points: bool,
+        // points: Vec<[u16; 3]>,
     },
     Geometry {
         av: AvObject,
@@ -176,6 +200,35 @@ pub(super) enum Block {
         value: u32,
     },
     Unknown,
+}
+
+bitflags! {
+    #[derive(Debug, Clone)]
+    pub(super) struct AvFlags: u32 {
+        const VISIBLE = 0x1;
+        const SELECTABLE = 0x2;
+        const RENDERABLE = 0x4;
+        const CAST_SHADOWS = 0x8;
+        const RECEIVE_SHADOWS = 0x10;
+        const BOUNDS_VALID = 0x20;
+        const BOUNDS_AUTO_UPDATE = 0x40;
+        const BOUNDS_AUTO_COMPUTE = 0x80;
+        const BOUNDS_VISIBLE = 0x100;
+        const BOUNDS_SELECTABLE = 0x200;
+        const BOUNDS_RENDERABLE = 0x400;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone)]
+    pub(super) struct TriShapeFlags: u8 {
+        const HAS_VERTICES = 1;
+        const HAS_NORMALS = 2;
+        const HAS_BINORMALS = 3;
+        const HAS_TANGENTS = 4;
+        const HAS_UVS = 5;
+        const HAS_COLORS = 8;
+    }
 }
 
 fn string_idx(header: &Header, idx: u32) -> String {
@@ -207,7 +260,7 @@ fn parse_object_net(r: &mut Reader<'_>, header: &Header) -> Result<ObjectNet> {
 
 fn parse_av_object(r: &mut Reader<'_>, header: &Header) -> Result<AvObject> {
     let net = parse_object_net(r, header)?;
-    let flags = r.u32()?;
+    let flags = AvFlags::from_bits_retain(r.u32()?);
     let translation = [r.f32()?, r.f32()?, r.f32()?];
     let mut rotation = [[0.0f32; 3]; 3];
     for row in rotation.iter_mut() {
@@ -231,6 +284,75 @@ fn unpack_normbyte(b: u8) -> f32 {
     b as f32 / 255.0 * 2.0 - 1.0
 }
 
+fn parse_tri_strips(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
+    let av = parse_av_object(r, header)?;
+    let material = r.i32()?;
+    let lighting = r.i32()?;
+    r.skip(4)?; // unknown
+    let data = r.i32()?;
+    r.skip(4 + 9)?; //
+
+    let tri_strips = Block::TriStrips {
+        av,
+        material,
+        lighting,
+        data,
+    };
+    info!("NiTriStrips {:?}", tri_strips);
+    Ok(tri_strips)
+}
+
+fn parse_tri_strips_data(
+    r: &mut Reader<'_>,
+    header: &Header,
+    offset: usize,
+    size: usize,
+) -> Result<Block> {
+    let bsver = header.bs_version;
+    let av = parse_av_object(r, header)?;
+    let _ = r.u32()?;
+    let num_vertices = if bsver >= 130 {
+        r.u32()?
+    } else {
+        r.u16()? as u32
+    } as usize;
+    let keep_flags = TriShapeFlags::from_bits_retain(r.u8()?);
+    let compress_flags = r.u8()?;
+
+    let has_vertices = r.u8()? != 0;
+    let mut vertices = Vec::with_capacity(num_vertices as usize);
+    let curr_offset = r.pos();
+    let block_pos = curr_offset - offset;
+    let remaining_size = size.saturating_sub(block_pos);
+    info!(
+        "NiTriStripsData: vertices {}, keep_flags {:?}, compress_flags {:02X}, remaining size {}, total f32 vertice size {}, total f16 vertice size {}",
+        num_vertices, keep_flags, compress_flags, remaining_size, num_vertices * 4 * 3, num_vertices * 2 * 3
+    );
+    if has_vertices {
+        for _ in 0..num_vertices {
+            vertices.push([r.f16()? as f32, r.f16()? as f32, r.f16()?]);
+        }
+    }
+
+    // Debug fillout
+    // let curr_offset = r.pos();
+    // let block_pos = curr_offset - offset;
+    // let remaining_size = size.saturating_sub(block_pos);
+    // let bytes = r.bytes(remaining_size)?;
+    // info!(
+    //     "Remaining bytes for NiTriStripsData block at offset {:02X?}, size {}, content: {:02X?}",
+    //     curr_offset, remaining_size, bytes
+    // );
+    let tri_strips_data = Block::TriStripsData {
+        av,
+        keep_flags,
+        compress_flags,
+        vertices,
+    };
+    // info!("NiTriStripsData {:?}", tri_strips_data);
+    Ok(tri_strips_data)
+}
+
 fn parse_tri_shape(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
     let bsver = header.bs_version;
     let av = parse_av_object(r, header)?;
@@ -238,6 +360,7 @@ fn parse_tri_shape(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
     if bsver >= 155 {
         r.skip(24)?; // bounding box
     }
+
     let skin = r.i32()?;
     let shader = r.i32()?;
     let alpha = r.i32()?;
@@ -358,7 +481,7 @@ fn parse_bs_geometry(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
     let shader = r.i32()?;
     let alpha = r.i32()?;
 
-    let embedded = (av.flags & 512) != 0;
+    let embedded = av.flags.contains(AvFlags::BOUNDS_SELECTABLE);
     let mut geo = GeoSource::None;
     let mut lods = Vec::new();
     for _lod in 0..4 {
@@ -451,6 +574,29 @@ fn parse_int_extra(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
     Ok(Block::IntExtra { name, value })
 }
 
+fn print_block_debug(
+    r: &mut Reader<'_>,
+    index: usize,
+    offset: usize,
+    size: usize,
+    type_name: &str,
+) {
+    let bytes = r.bytes(size).unwrap_or_default();
+    info!(
+        "block {} ({}) at offset {:02X?}, size {}, content: {:02X?}",
+        index, type_name, offset, size, bytes
+    );
+    r.seek(offset).expect("");
+}
+
+fn handle_unknown_block(offset: usize, type_name: &str) -> Result<Block> {
+    info!(
+        "skipping unknown block type: {} at offset {:02X?}",
+        type_name, offset
+    );
+    Ok(Block::Unknown)
+}
+
 // ---- transforms (column-major [[f32;4];4], m[col][row]) ----
 
 const IDENTITY: [[f32; 4]; 4] = [
@@ -482,12 +628,7 @@ fn local_transform(av: &AvObject) -> [[f32; 4]; 4] {
             *v = av.rotation[row][col] * av.scale;
         }
     }
-    m[3] = [
-        av.translation[0],
-        av.translation[1],
-        av.translation[2],
-        1.0,
-    ];
+    m[3] = [av.translation[0], av.translation[1], av.translation[2], 1.0];
     m
 }
 
@@ -504,6 +645,7 @@ pub(super) fn parse_blocks(bytes: &[u8]) -> Result<ParsedNif> {
     let mut r = Reader::new(bytes);
     let header = parse_header(&mut r)?;
 
+    info!("parsed header: {:?}", header);
     let mut blocks = Vec::with_capacity(header.num_blocks);
     let mut offset = r.pos();
     for i in 0..header.num_blocks {
@@ -515,20 +657,34 @@ pub(super) fn parse_blocks(bytes: &[u8]) -> Result<ParsedNif> {
             .unwrap_or("");
         r.seek(offset)?;
         let end = offset + size;
+        let mut parse_checkpoint = r.pos();
+        info!(
+            "parsing block {} ({}) at offset {:02X?}, size {}",
+            i, type_name, offset, size
+        );
         let parsed: Result<Block> = match type_name {
             "NiNode" | "BSFadeNode" | "BSLeafAnimNode" | "BSOrderedNode" | "BSMultiBoundNode"
             | "BSTreeNode" => {
                 let av = parse_av_object(&mut r, &header);
                 av.and_then(|av| {
+                    parse_checkpoint = r.pos();
                     let num_children = r.u32()? as usize;
+                    let num_children: usize = if num_children == 0xFFFFFFFF {
+                        0
+                    } else {
+                        num_children
+                    };
                     let mut children = Vec::with_capacity(num_children);
                     for _ in 0..num_children {
                         children.push(r.i32()?);
                     }
                     // Num Effects (bsver < 130) skipped via resync.
-                    Ok(Block::Node { av, children })
+                    let node = Block::Node { av, children };
+                    Ok(node)
                 })
             }
+            "NiTriStrips" => parse_tri_strips(&mut r, &header),
+            "NiTriStripsData" => parse_tri_strips_data(&mut r, &header, offset, size),
             "BSTriShape" | "BSSubIndexTriShape" => parse_tri_shape(&mut r, &header),
             "BSGeometry" => parse_bs_geometry(&mut r, &header),
             "BSLightingShaderProperty" => parse_shader_property(&mut r, &header, true),
@@ -536,7 +692,7 @@ pub(super) fn parse_blocks(bytes: &[u8]) -> Result<ParsedNif> {
             "BSShaderTextureSet" => parse_texture_set(&mut r),
             "NiAlphaProperty" => parse_alpha_property(&mut r, &header),
             "NiIntegerExtraData" | "BSXFlags" => parse_int_extra(&mut r, &header),
-            _ => Ok(Block::Unknown),
+            _ => handle_unknown_block(offset, type_name),
         };
         let block = match parsed {
             Ok(b) => {
@@ -552,7 +708,13 @@ pub(super) fn parse_blocks(bytes: &[u8]) -> Result<ParsedNif> {
                 b
             }
             Err(e) => {
-                warn!("failed to parse block {} ({}): {}; skipping", i, type_name, e);
+                r.seek(parse_checkpoint)?;
+                let bytes = r.bytes(size).unwrap_or_default();
+                info!("offset {:02X?}, bytes: {:02X?}", parse_checkpoint, bytes);
+                warn!(
+                    "failed to parse block {} ({}): {}; skipping",
+                    i, type_name, e
+                );
                 Block::Unknown
             }
         };
