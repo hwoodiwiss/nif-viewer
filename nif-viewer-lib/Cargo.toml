@@ -49,7 +49,7 @@ wasm-bindgen-futures = "0.4.64"
 # getrandom 0.2 fix for tobj's dependency chain
 getrandom = { version = "0.2.17", features = ["js"] }
 # getrandom 0.3 (pulled in via ahash -> tobj) requires both the wasm_js feature
-# and the getrandom_backend="wasm_js" rustflag (set in build.ps1 and .cargo/config.toml)
+# and the getrandom_backend="wasm_js" rustflag (set in .cargo/config.toml)
 getrandom3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 
 [build-dependencies]

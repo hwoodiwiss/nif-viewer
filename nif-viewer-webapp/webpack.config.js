@@ -18,6 +18,7 @@ module.exports = {
         {
           from: "../resources",
           to: "resources",
+          noErrorOnMissing: true,
         },
         {
           from: "../shaders",

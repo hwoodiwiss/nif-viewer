@@ -63,7 +63,6 @@ pack it (or just run `./build.ps1`, which does both):
 
 ```pwsh
 # from nif-viewer-lib:
-$env:RUSTFLAGS = '--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"'
 wasm-pack build --release --target web --out-dir pkg-web
 # from the repo root:
 dotnet pack nif-viewer-blazor/NifViewer.Blazor -c Release -o artifacts/
@@ -89,7 +88,6 @@ See `nif-viewer-blazor/NifViewer.Blazor/README.md` for the full API.
 Build the package (from `nif-viewer-lib`):
 
 ```pwsh
-$env:RUSTFLAGS = '--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"'
 wasm-pack build --release
 ```
 

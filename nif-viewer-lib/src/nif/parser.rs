@@ -303,7 +303,7 @@ fn unpack_normbyte(b: u8) -> f32 {
 
 /// Type name of the block a ref points to, resolved via the header's
 /// block-type table (available for every block regardless of parse order).
-fn ref_type_name<'h>(header: &'h Header, block_ref: i32) -> Option<&'h str> {
+fn ref_type_name(header: &Header, block_ref: i32) -> Option<&str> {
     let idx = usize::try_from(block_ref).ok()?;
     let type_idx = *header.block_type_index.get(idx)? as usize;
     header.block_types.get(type_idx).map(String::as_str)
@@ -478,10 +478,12 @@ fn tri_strips_data_to_geometry(b: &Block) -> Option<Geometry> {
             strips,
             ..
         } => {
-            let mut mesh = MeshData::default();
-            mesh.positions = vertices.clone();
-            mesh.normals = normals.clone();
-            mesh.colors = vertex_colors.clone();
+            let mut mesh = MeshData {
+                positions: vertices.clone(),
+                normals: normals.clone(),
+                colors: vertex_colors.clone(),
+                ..Default::default()
+            };
             if !uv_sets.is_empty() {
                 mesh.uvs = uv_sets[0].clone();
             }
