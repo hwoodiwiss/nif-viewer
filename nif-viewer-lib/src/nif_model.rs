@@ -87,7 +87,10 @@ fn compute_normals(positions: &[[f32; 3]], indices: &[u32]) -> Vec<[f32; 3]> {
         if a >= positions.len() || b >= positions.len() || c >= positions.len() {
             continue;
         }
-        let n = cross(sub(positions[b], positions[a]), sub(positions[c], positions[a]));
+        let n = cross(
+            sub(positions[b], positions[a]),
+            sub(positions[c], positions[a]),
+        );
         for &i in &[a, b, c] {
             normals[i][0] += n[0];
             normals[i][1] += n[1];
@@ -338,8 +341,14 @@ mod tests {
 
     #[test]
     fn normalize_strips_data_prefix() {
-        assert_eq!(normalize_path("Data\\Textures\\Foo.DDS"), "textures/foo.dds");
-        assert_eq!(normalize_path("data/data/geometries/foo.mesh"), "geometries/foo.mesh");
+        assert_eq!(
+            normalize_path("Data\\Textures\\Foo.DDS"),
+            "textures/foo.dds"
+        );
+        assert_eq!(
+            normalize_path("data/data/geometries/foo.mesh"),
+            "geometries/foo.mesh"
+        );
     }
 }
 
@@ -349,7 +358,7 @@ mod native_tests {
     use crate::nif;
     use std::path::{Path, PathBuf};
 
-    const SAMPLE_ROOT: &str = r"C:\Users\secro\Documents\StarfieldResources";
+    const SAMPLE_ROOT: &str = r"C:\Users\user\Documents\StarfieldResources";
 
     fn sample_root() -> Option<PathBuf> {
         let p = PathBuf::from(SAMPLE_ROOT);
@@ -359,10 +368,7 @@ mod native_tests {
     fn load_scene(root: &Path, nif_rel: &str) -> nif::NifScene {
         let bytes = std::fs::read(root.join(nif_rel)).unwrap();
         let mut scene = nif::parse_nif(&bytes).unwrap();
-        nif::resolve_external(&mut scene, &mut |path| {
-            std::fs::read(root.join(path)).ok()
-        })
-        .unwrap();
+        nif::resolve_external(&mut scene, &mut |path| std::fs::read(root.join(path)).ok()).unwrap();
         scene
     }
 
@@ -457,7 +463,10 @@ mod native_tests {
                 let path = entry.path();
                 if path.is_dir() {
                     stack.push(path);
-                } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dds")) {
+                } else if path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("dds"))
+                {
                     let bytes = std::fs::read(&path).unwrap();
                     let is_normal = path
                         .to_string_lossy()

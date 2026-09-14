@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use nif_viewer_lib::nif::{parse_mesh, parse_nif, resolve_external, Geometry};
 
-const RES_ROOT: &str = r"C:\Users\secro\Documents\StarfieldResources";
+const RES_ROOT: &str = r"C:\Users\user\Documents\StarfieldResources";
 
 fn meshes_dir() -> PathBuf {
     Path::new(RES_ROOT).join("meshes")
@@ -53,7 +53,12 @@ fn check_mesh_consistency(name: &str, data: &nif_viewer_lib::nif::MeshData) {
     let nv = data.positions.len();
     assert!(nv > 0, "{}: no positions", name);
     if !data.normals.is_empty() {
-        assert_eq!(data.normals.len(), nv, "{}: normals/positions mismatch", name);
+        assert_eq!(
+            data.normals.len(),
+            nv,
+            "{}: normals/positions mismatch",
+            name
+        );
     }
     if !data.uvs.is_empty() {
         assert_eq!(data.uvs.len(), nv, "{}: uvs/positions mismatch", name);
@@ -144,7 +149,10 @@ fn parse_nif_corpus() {
     println!("--- NIF corpus summary ---");
     println!("parsed OK: {} / {}", ok, files.len());
     println!("mesh instances: {:?}", mesh_counts);
-    println!("resolved geometry: {}, unresolved: {}", resolved, unresolved);
+    println!(
+        "resolved geometry: {}, unresolved: {}",
+        resolved, unresolved
+    );
     for (f, e) in &failures {
         println!("FAIL {:?}: {}", f, e);
     }
@@ -181,8 +189,7 @@ fn parse_standalone_mesh_files() {
                 .unwrap_or(false)
             {
                 let bytes = fs::read(&path).expect("read .mesh");
-                let data = parse_mesh(&bytes)
-                    .unwrap_or_else(|e| panic!("parse {:?}: {}", path, e));
+                let data = parse_mesh(&bytes).unwrap_or_else(|e| panic!("parse {:?}: {}", path, e));
                 check_mesh_consistency(&format!("{:?}", path), &data);
                 count += 1;
                 if count >= 10 {

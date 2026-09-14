@@ -78,6 +78,15 @@ fn net_children(net: &ObjectNet) -> Vec<i32> {
     c
 }
 
+/// Refs owned directly by a `NiAVObject`: NiObjectNET's extra data/controller
+/// plus its legacy properties list (bs_version <= 34 only) and collision ref.
+fn av_children(av: &AvObject) -> Vec<i32> {
+    let mut c = net_children(&av.net);
+    push_refs(&mut c, &av.properties);
+    push_refs(&mut c, &[av.collision]);
+    c
+}
+
 fn av_fields(av: &AvObject) -> Value {
     json!({
         "name": av.net.name,
@@ -88,6 +97,7 @@ fn av_fields(av: &AvObject) -> Value {
         "collisionRef": av.collision,
         "controllerRef": av.net.controller,
         "extraDataRefs": av.net.extra_data,
+        "propertyRefs": av.properties,
     })
 }
 
@@ -120,7 +130,7 @@ fn decode_vertex_desc(desc: u64) -> Value {
 fn block_details(block: &Block) -> (Option<&str>, Value, Vec<i32>) {
     match block {
         Block::Node { av, children } => {
-            let mut refs = net_children(&av.net);
+            let mut refs = av_children(av);
             push_refs(&mut refs, children);
             (
                 Some(av.name()),
@@ -138,7 +148,7 @@ fn block_details(block: &Block) -> (Option<&str>, Value, Vec<i32>) {
             num_vertices,
             ..
         } => {
-            let mut refs = net_children(&av.net);
+            let mut refs = av_children(av);
             push_refs(&mut refs, &[*skin, *shader, *alpha]);
             (
                 Some(av.name()),
@@ -158,33 +168,46 @@ fn block_details(block: &Block) -> (Option<&str>, Value, Vec<i32>) {
         }
         Block::TriStrips {
             av,
-            material,
-            lighting,
             data,
+            skin,
+            shader,
+            alpha,
         } => {
-            let mut refs = net_children(&av.net);
-            push_refs(&mut refs, &[*material, *lighting, *data]);
+            let mut refs = av_children(av);
+            push_refs(&mut refs, &[*data, *skin, *shader, *alpha]);
             (
                 Some(av.name()),
                 merge(
                     av_fields(av),
                     json!({
-                        "materialRef": material,
-                        "lightingRef": lighting,
                         "dataRef": data,
+                        "skinRef": skin,
+                        "shaderRef": shader,
+                        "alphaRef": alpha,
                     }),
                 ),
                 refs,
             )
         }
         Block::TriStripsData {
-            av,
-            keep_flags: _,
-            compress_flags: _,
-            vertices: _,
+            keep_flags,
+            compress_flags,
+            vertices,
+            normals,
+            vertex_colors,
+            uv_sets,
+            strips,
         } => {
-            let refs = net_children(&av.net);
-            (Some(av.name()), av_fields(av), refs)
+            let fields = json!({
+                "keepFlags": keep_flags.bits(),
+                "compressFlags": compress_flags,
+                "numVertices": vertices.len(),
+                "numNormals": normals.len(),
+                "numVertexColors": vertex_colors.len(),
+                "numUvSets": uv_sets.len(),
+                "numStrips": strips.len(),
+            });
+            (None, fields, Vec::new())
         }
         Block::Geometry {
             av,
@@ -194,7 +217,7 @@ fn block_details(block: &Block) -> (Option<&str>, Value, Vec<i32>) {
             lods,
             geo,
         } => {
-            let mut refs = net_children(&av.net);
+            let mut refs = av_children(av);
             push_refs(&mut refs, &[*skin, *shader, *alpha]);
             let lods: Vec<Value> = lods
                 .iter()
@@ -275,8 +298,7 @@ fn block_details(block: &Block) -> (Option<&str>, Value, Vec<i32>) {
 mod tests {
     use super::nif_structure;
 
-    const SAMPLE: &str =
-        r"C:\Users\secro\Documents\StarfieldResources\meshes\weapons\ar99\ar99.nif";
+    const SAMPLE: &str = r"C:\Users\user\Documents\StarfieldResources\meshes\weapons\ar99\ar99.nif";
 
     #[test]
     fn structure_of_sample_nif() {
