@@ -361,7 +361,6 @@ fn parse_tri_strips(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
         shader,
         alpha,
     };
-    info!("NiTriStrips {:?}", tri_strips);
     Ok(tri_strips)
 }
 
@@ -478,6 +477,10 @@ fn tri_strips_data_to_geometry(b: &Block) -> Option<Geometry> {
             strips,
             ..
         } => {
+            if strips.iter().flatten().any(|&index| index as usize >= vertices.len()) {
+                warn!("NiTriStripsData contains an out-of-range vertex index; skipping geometry");
+                return None;
+            }
             let mut mesh = MeshData {
                 positions: vertices.clone(),
                 normals: normals.clone(),
@@ -496,6 +499,10 @@ fn tri_strips_data_to_geometry(b: &Block) -> Option<Geometry> {
                     let a = strip[i];
                     let b = strip[i + 1];
                     let c = strip[i + 2];
+                    // Degenerate connector triangles still advance strip parity.
+                    if a == b || b == c || a == c {
+                        continue;
+                    }
                     if i % 2 == 0 {
                         mesh.indices.push(a as u32);
                         mesh.indices.push(b as u32);
@@ -1049,7 +1056,10 @@ fn traverse(
             alpha,
         } => {
             let world = mat_mul(parent, &local_transform(av));
-            let tri_strips_geometry = tri_strips_data_to_geometry(&blocks[*data as usize]);
+            let tri_strips_geometry = usize::try_from(*data)
+                .ok()
+                .and_then(|index| blocks.get(index))
+                .and_then(tri_strips_data_to_geometry);
             if let Some(geometry) = tri_strips_geometry {
                 scene.meshes.push(NifMeshInstance {
                     name: av.name().to_string(),
