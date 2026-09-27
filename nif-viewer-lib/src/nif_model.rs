@@ -82,7 +82,7 @@ fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
 /// Compute smooth (area-weighted averaged) normals from triangle data.
 fn compute_normals(positions: &[[f32; 3]], indices: &[u32]) -> Vec<[f32; 3]> {
     let mut normals = vec![[0.0f32; 3]; positions.len()];
-    for tri in indices.chunks_exact(3) {
+    for tri in indices.as_chunks::<3>().0 {
         let (a, b, c) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
         if a >= positions.len() || b >= positions.len() || c >= positions.len() {
             continue;
