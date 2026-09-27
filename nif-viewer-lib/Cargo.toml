@@ -25,6 +25,7 @@ half = "2"
 serde_json = "1"
 ddsfile = "0.5"
 bcdec_rs = "0.1"
+bitflags = "2.13.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
@@ -48,7 +49,7 @@ wasm-bindgen-futures = "0.4.64"
 # getrandom 0.2 fix for tobj's dependency chain
 getrandom = { version = "0.2.17", features = ["js"] }
 # getrandom 0.3 (pulled in via ahash -> tobj) requires both the wasm_js feature
-# and the getrandom_backend="wasm_js" rustflag (set in build.ps1 and .cargo/config.toml)
+# and the getrandom_backend="wasm_js" rustflag (set in .cargo/config.toml)
 getrandom3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 
 [build-dependencies]

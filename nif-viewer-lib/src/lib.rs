@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc;
+use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
@@ -437,13 +437,14 @@ fn load_nif_with_dependencies(nif_path: &str) -> anyhow::Result<(Vec<u8>, Resour
         if files.contains_key(rel) {
             return true;
         }
-        match std::fs::read(root.join(rel)) {
+        let full_path = root.join(rel);
+        match std::fs::read(&full_path) {
             Ok(bytes) => {
                 files.insert(rel.to_string(), bytes);
                 true
             }
             Err(_) => {
-                log::warn!("dependency not found on disk: {}", rel);
+                log::warn!("dependency not found on disk: {}", full_path.display());
                 false
             }
         }
@@ -794,8 +795,8 @@ fn paths_to_js(paths: &[String]) -> JsValue {
 #[wasm_bindgen]
 pub fn load_session_begin(name: &str, nif_bytes: &[u8]) -> Result<JsValue, JsValue> {
     init_wasm_logging();
-    let (session, required) = load_session::LoadSession::begin(name, nif_bytes)
-        .map_err(|e| JsValue::from_str(&e))?;
+    let (session, required) =
+        load_session::LoadSession::begin(name, nif_bytes).map_err(|e| JsValue::from_str(&e))?;
     log::info!(
         "load session begun: {name} ({} bytes, {} required dependency path(s))",
         nif_bytes.len(),

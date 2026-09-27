@@ -2,7 +2,8 @@
 
 use std::convert::TryFrom;
 
-use log::{debug, warn};
+use bitflags::bitflags;
+use log::{debug, info, warn};
 
 use super::mesh::{parse_mesh_reader, MeshData};
 use super::reader::{NifError, Reader, Result};
@@ -10,6 +11,7 @@ use super::{Geometry, MaterialInfo, NifMeshInstance, NifScene};
 
 const NIF_VERSION: u32 = 0x1402_0007;
 
+#[derive(Debug)]
 pub(super) struct Header {
     pub header_string: String,
     pub version: u32,
@@ -102,11 +104,17 @@ pub(super) struct ObjectNet {
 #[derive(Debug, Clone)]
 pub(super) struct AvObject {
     pub net: ObjectNet,
-    pub flags: u32,
+    pub flags: AvFlags,
     pub translation: [f32; 3],
     /// Row-major 3x3 rotation (rows of basis vectors).
     pub rotation: [[f32; 3]; 3],
     pub scale: f32,
+    /// Legacy rendering properties (`NiMaterialProperty`,
+    /// `NiTexturingProperty`, shader properties, etc). Only present for
+    /// `bs_version <= 34` (Oblivion/Fallout 3/NV and non-Bethesda streams);
+    /// later Bethesda streams attach shader/alpha properties directly on
+    /// the geometry block instead.
+    pub properties: Vec<i32>,
     pub collision: i32,
 }
 
@@ -126,6 +134,7 @@ pub(super) struct GeoLod {
     pub path: Option<String>,
 }
 
+#[derive(Debug)]
 pub(super) enum GeoSource {
     Embedded(MeshData),
     External {
@@ -136,6 +145,7 @@ pub(super) enum GeoSource {
     None,
 }
 
+#[derive(Debug)]
 pub(super) enum Block {
     Node {
         av: AvObject,
@@ -150,6 +160,24 @@ pub(super) enum Block {
         num_triangles: u32,
         num_vertices: u32,
         mesh: MeshData,
+    },
+    TriStrips {
+        av: AvObject,
+        data: i32,
+        skin: i32,
+        shader: i32,
+        alpha: i32,
+    },
+    TriStripsData {
+        keep_flags: TriShapeFlags,
+        compress_flags: u8,
+        vertices: Vec<[f32; 3]>,
+        normals: Vec<[f32; 3]>,
+        vertex_colors: Vec<[f32; 4]>,
+        uv_sets: Vec<Vec<[f32; 2]>>,
+        /// One entry per strip; each entry is the list of point (vertex)
+        /// indices making up that triangle strip.
+        strips: Vec<Vec<u16>>,
     },
     Geometry {
         av: AvObject,
@@ -176,6 +204,35 @@ pub(super) enum Block {
         value: u32,
     },
     Unknown,
+}
+
+bitflags! {
+    #[derive(Debug, Clone)]
+    pub(super) struct AvFlags: u32 {
+        const VISIBLE = 0x1;
+        const SELECTABLE = 0x2;
+        const RENDERABLE = 0x4;
+        const CAST_SHADOWS = 0x8;
+        const RECEIVE_SHADOWS = 0x10;
+        const BOUNDS_VALID = 0x20;
+        const BOUNDS_AUTO_UPDATE = 0x40;
+        const BOUNDS_AUTO_COMPUTE = 0x80;
+        const BOUNDS_VISIBLE = 0x100;
+        const BOUNDS_SELECTABLE = 0x200;
+        const BOUNDS_RENDERABLE = 0x400;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone)]
+    pub(super) struct TriShapeFlags: u8 {
+        const HAS_VERTICES = 1;
+        const HAS_NORMALS = 2;
+        const HAS_BINORMALS = 3;
+        const HAS_TANGENTS = 4;
+        const HAS_UVS = 5;
+        const HAS_COLORS = 8;
+    }
 }
 
 fn string_idx(header: &Header, idx: u32) -> String {
@@ -207,7 +264,7 @@ fn parse_object_net(r: &mut Reader<'_>, header: &Header) -> Result<ObjectNet> {
 
 fn parse_av_object(r: &mut Reader<'_>, header: &Header) -> Result<AvObject> {
     let net = parse_object_net(r, header)?;
-    let flags = r.u32()?;
+    let flags = AvFlags::from_bits_retain(r.u32()?);
     let translation = [r.f32()?, r.f32()?, r.f32()?];
     let mut rotation = [[0.0f32; 3]; 3];
     for row in rotation.iter_mut() {
@@ -216,6 +273,18 @@ fn parse_av_object(r: &mut Reader<'_>, header: &Header) -> Result<AvObject> {
         }
     }
     let scale = r.f32()?;
+    // NiAVObject::Num Properties/Properties (vercond `#NI_BS_LTE_FO3#`:
+    // bs_version <= 34, i.e. non-Bethesda streams, Oblivion, Fallout 3/NV).
+    // Removed for Skyrim (83) and later, where properties live on the
+    // geometry block (shader/alpha refs) instead.
+    let mut properties = Vec::new();
+    if header.bs_version <= 34 {
+        let num_properties = r.u32()? as usize;
+        properties.reserve(num_properties.min(1024));
+        for _ in 0..num_properties {
+            properties.push(r.i32()?);
+        }
+    }
     let collision = r.i32()?;
     Ok(AvObject {
         net,
@@ -223,12 +292,232 @@ fn parse_av_object(r: &mut Reader<'_>, header: &Header) -> Result<AvObject> {
         translation,
         rotation,
         scale,
+        properties,
         collision,
     })
 }
 
 fn unpack_normbyte(b: u8) -> f32 {
     b as f32 / 255.0 * 2.0 - 1.0
+}
+
+/// Type name of the block a ref points to, resolved via the header's
+/// block-type table (available for every block regardless of parse order).
+fn ref_type_name(header: &Header, block_ref: i32) -> Option<&str> {
+    let idx = usize::try_from(block_ref).ok()?;
+    let type_idx = *header.block_type_index.get(idx)? as usize;
+    header.block_types.get(type_idx).map(String::as_str)
+}
+
+/// Pre-Skyrim (`bs_version <= 34`) files attach shader/alpha properties to
+/// the `NiAVObject`'s legacy `Properties` ref list instead of the dedicated
+/// `Shader Property`/`Alpha Property` fields `NiGeometry` gained in Skyrim+.
+/// Resolve them from that list so callers get a uniform `(shader, alpha)`
+/// pair regardless of NIF era.
+fn resolve_legacy_shader_alpha(header: &Header, properties: &[i32]) -> (i32, i32) {
+    let mut shader = -1;
+    let mut alpha = -1;
+    for &prop in properties {
+        match ref_type_name(header, prop) {
+            Some(name) if name.contains("Shader") => shader = prop,
+            Some("NiAlphaProperty") => alpha = prop,
+            _ => {}
+        }
+    }
+    (shader, alpha)
+}
+
+/// NiMain::MaterialData (version 20.2.0.7: no legacy `Has Shader` block,
+/// since that field was removed after 20.1.0.3). Consumes the bytes and
+/// returns the active material index (rarely useful, but kept for parity).
+fn parse_material_data(r: &mut Reader<'_>) -> Result<i32> {
+    let num_materials = r.u32()? as usize;
+    for _ in 0..num_materials {
+        let _material_name = r.u32()?; // NiFixedString ref
+        let _material_extra_data = r.i32()?;
+    }
+    let active_material = r.i32()?;
+    let _material_needs_update = r.u8()?;
+    Ok(active_material)
+}
+
+/// NiTriStrips : NiTriBasedGeom : NiGeometry : NiAVObject.
+fn parse_tri_strips(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
+    let bsver = header.bs_version;
+    let av = parse_av_object(r, header)?;
+    let data = r.i32()?;
+    let skin = r.i32()?;
+    let _active_material = parse_material_data(r)?;
+    let (shader, alpha) = if bsver > 34 {
+        (r.i32()?, r.i32()?)
+    } else {
+        resolve_legacy_shader_alpha(header, &av.properties)
+    };
+
+    let tri_strips = Block::TriStrips {
+        av,
+        data,
+        skin,
+        shader,
+        alpha,
+    };
+    Ok(tri_strips)
+}
+
+/// NiTriStripsData : NiTriBasedGeomData : NiGeometryData : NiObject.
+///
+/// Note: unlike `NiTriShapeData`/`BSTriShape`, this is *not* an `NiAVObject`
+/// and has no name/transform fields of its own — those live on the owning
+/// `NiTriStrips` node.
+fn parse_tri_strips_data(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
+    let bsver = header.bs_version;
+
+    // Group ID (since 10.1.0.114; always present for our supported version).
+    let _group_id = r.i32()?;
+    let num_vertices = r.u16()? as usize;
+    let keep_flags = TriShapeFlags::from_bits_retain(r.u8()?);
+    let compress_flags = r.u8()?;
+
+    let has_vertices = r.u8()? != 0;
+    let mut vertices = Vec::with_capacity(if has_vertices { num_vertices } else { 0 });
+    if has_vertices {
+        for _ in 0..num_vertices {
+            vertices.push([r.f32()?, r.f32()?, r.f32()?]);
+        }
+    }
+
+    // BS Data Flags (version 20.2.0.7 + Bethesda stream always uses this
+    // form rather than the generic `NiGeometryDataFlags`).
+    let bs_data_flags = r.u16()?;
+    let has_uv = (bs_data_flags & 0x1) != 0;
+    let has_tangents = (bs_data_flags & 0x1000) != 0;
+
+    if bsver > 34 {
+        let _material_crc = r.u32()?;
+    }
+
+    let has_normals = r.u8()? != 0;
+    let mut normals = Vec::with_capacity(if has_normals { num_vertices } else { 0 });
+    if has_normals {
+        for _ in 0..num_vertices {
+            normals.push([r.f32()?, r.f32()?, r.f32()?]);
+        }
+    }
+    if has_normals && has_tangents {
+        for _ in 0..num_vertices {
+            r.skip(12)?; // tangents (Vector3), unused for now
+        }
+        for _ in 0..num_vertices {
+            r.skip(12)?; // bitangents (Vector3), unused for now
+        }
+    }
+
+    r.skip(16)?; // Bounding Sphere (NiBound: Vector3 center + float radius)
+
+    let has_vertex_colors = r.u8()? != 0;
+    let mut vertex_colors = Vec::with_capacity(if has_vertex_colors { num_vertices } else { 0 });
+    if has_vertex_colors {
+        for _ in 0..num_vertices {
+            vertex_colors.push([r.f32()?, r.f32()?, r.f32()?, r.f32()?]);
+        }
+    }
+
+    let num_uv_sets = if has_uv { 1 } else { 0 };
+    let mut uv_sets = Vec::with_capacity(num_uv_sets);
+    for _ in 0..num_uv_sets {
+        let mut set = Vec::with_capacity(num_vertices);
+        for _ in 0..num_vertices {
+            set.push([r.f32()?, r.f32()?]);
+        }
+        uv_sets.push(set);
+    }
+
+    let _consistency_flags = r.u16()?;
+    let _additional_data = r.i32()?;
+
+    // NiTriBasedGeomData
+    let _num_triangles = r.u16()? as u32;
+
+    // NiTriStripsData
+    let num_strips = r.u16()? as usize;
+    let mut strip_lengths = Vec::with_capacity(num_strips);
+    for _ in 0..num_strips {
+        strip_lengths.push(r.u16()? as usize);
+    }
+    let has_points = r.u8()? != 0;
+    let mut strips = Vec::with_capacity(num_strips);
+    if has_points {
+        for &len in &strip_lengths {
+            let mut points = Vec::with_capacity(len);
+            for _ in 0..len {
+                points.push(r.u16()?);
+            }
+            strips.push(points);
+        }
+    }
+
+    Ok(Block::TriStripsData {
+        keep_flags,
+        compress_flags,
+        vertices,
+        normals,
+        vertex_colors,
+        uv_sets,
+        strips,
+    })
+}
+
+fn tri_strips_data_to_geometry(b: &Block) -> Option<Geometry> {
+    match b {
+        Block::TriStripsData {
+            vertices,
+            normals,
+            vertex_colors,
+            uv_sets,
+            strips,
+            ..
+        } => {
+            if strips.iter().flatten().any(|&index| index as usize >= vertices.len()) {
+                warn!("NiTriStripsData contains an out-of-range vertex index; skipping geometry");
+                return None;
+            }
+            let mut mesh = MeshData {
+                positions: vertices.clone(),
+                normals: normals.clone(),
+                colors: vertex_colors.clone(),
+                ..Default::default()
+            };
+            if !uv_sets.is_empty() {
+                mesh.uvs = uv_sets[0].clone();
+            }
+            // Convert triangle strips to triangle list indices.
+            for strip in strips {
+                if strip.len() < 3 {
+                    continue;
+                }
+                for i in 0..(strip.len() - 2) {
+                    let a = strip[i];
+                    let b = strip[i + 1];
+                    let c = strip[i + 2];
+                    // Degenerate connector triangles still advance strip parity.
+                    if a == b || b == c || a == c {
+                        continue;
+                    }
+                    if i % 2 == 0 {
+                        mesh.indices.push(a as u32);
+                        mesh.indices.push(b as u32);
+                        mesh.indices.push(c as u32);
+                    } else {
+                        mesh.indices.push(b as u32);
+                        mesh.indices.push(a as u32);
+                        mesh.indices.push(c as u32);
+                    }
+                }
+            }
+            Some(Geometry::Embedded(mesh))
+        }
+        _ => None,
+    }
 }
 
 fn parse_tri_shape(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
@@ -238,6 +527,7 @@ fn parse_tri_shape(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
     if bsver >= 155 {
         r.skip(24)?; // bounding box
     }
+
     let skin = r.i32()?;
     let shader = r.i32()?;
     let alpha = r.i32()?;
@@ -358,7 +648,7 @@ fn parse_bs_geometry(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
     let shader = r.i32()?;
     let alpha = r.i32()?;
 
-    let embedded = (av.flags & 512) != 0;
+    let embedded = av.flags.contains(AvFlags::BOUNDS_SELECTABLE);
     let mut geo = GeoSource::None;
     let mut lods = Vec::new();
     for _lod in 0..4 {
@@ -414,7 +704,14 @@ fn parse_shader_property(r: &mut Reader<'_>, header: &Header, is_lighting: bool)
         let _shader_type = r.u32()?;
     }
     let net = parse_object_net(r, header)?;
+
     let mut texture_set = -1;
+
+    if is_lighting && bsver == 34 {
+        r.skip(22)?;
+        texture_set = r.i32()?;
+    }
+
     if is_lighting && (bsver == 100 || bsver == 130) {
         // Shader Flags 1/2, UV Offset, UV Scale, then Texture Set ref.
         r.skip(4 + 4 + 8 + 8)?;
@@ -451,6 +748,42 @@ fn parse_int_extra(r: &mut Reader<'_>, header: &Header) -> Result<Block> {
     Ok(Block::IntExtra { name, value })
 }
 
+fn print_block_debug(
+    r: &mut Reader<'_>,
+    index: usize,
+    offset: usize,
+    size: usize,
+    type_name: &str,
+) {
+    let bytes = r.bytes(size).unwrap_or_default();
+    info!(
+        "block {} ({}) at offset {:02X?}, size {}, content: {:02X?}",
+        index, type_name, offset, size, bytes
+    );
+    r.seek(offset).expect("");
+}
+
+#[allow(dead_code)]
+fn print_block_remaining(r: &mut Reader<'_>, offset: usize, size: usize) {
+    let curr_offset = r.pos();
+    let block_offset = curr_offset.saturating_sub(offset);
+    let remaining_size = size.saturating_sub(block_offset);
+    let bytes = r.bytes(remaining_size).unwrap_or_default();
+    info!(
+        "remaining block content at offset {:02X?}, size {}, content: {:02X?}",
+        offset, remaining_size, bytes
+    );
+    r.seek(curr_offset).expect("");
+}
+
+fn handle_unknown_block(offset: usize, type_name: &str) -> Result<Block> {
+    info!(
+        "skipping unknown block type: {} at offset {:02X?}",
+        type_name, offset
+    );
+    Ok(Block::Unknown)
+}
+
 // ---- transforms (column-major [[f32;4];4], m[col][row]) ----
 
 const IDENTITY: [[f32; 4]; 4] = [
@@ -482,12 +815,7 @@ fn local_transform(av: &AvObject) -> [[f32; 4]; 4] {
             *v = av.rotation[row][col] * av.scale;
         }
     }
-    m[3] = [
-        av.translation[0],
-        av.translation[1],
-        av.translation[2],
-        1.0,
-    ];
+    m[3] = [av.translation[0], av.translation[1], av.translation[2], 1.0];
     m
 }
 
@@ -504,6 +832,7 @@ pub(super) fn parse_blocks(bytes: &[u8]) -> Result<ParsedNif> {
     let mut r = Reader::new(bytes);
     let header = parse_header(&mut r)?;
 
+    info!("parsed header: {:?}", header);
     let mut blocks = Vec::with_capacity(header.num_blocks);
     let mut offset = r.pos();
     for i in 0..header.num_blocks {
@@ -515,28 +844,43 @@ pub(super) fn parse_blocks(bytes: &[u8]) -> Result<ParsedNif> {
             .unwrap_or("");
         r.seek(offset)?;
         let end = offset + size;
+        let mut parse_checkpoint = r.pos();
+        info!(
+            "parsing block {} ({}) at offset {:02X?}, size {}",
+            i, type_name, offset, size
+        );
         let parsed: Result<Block> = match type_name {
             "NiNode" | "BSFadeNode" | "BSLeafAnimNode" | "BSOrderedNode" | "BSMultiBoundNode"
             | "BSTreeNode" => {
                 let av = parse_av_object(&mut r, &header);
                 av.and_then(|av| {
+                    parse_checkpoint = r.pos();
                     let num_children = r.u32()? as usize;
+                    let num_children: usize = if num_children == 0xFFFFFFFF {
+                        0
+                    } else {
+                        num_children
+                    };
                     let mut children = Vec::with_capacity(num_children);
                     for _ in 0..num_children {
                         children.push(r.i32()?);
                     }
                     // Num Effects (bsver < 130) skipped via resync.
-                    Ok(Block::Node { av, children })
+                    let node = Block::Node { av, children };
+                    Ok(node)
                 })
             }
+            "NiTriStrips" => parse_tri_strips(&mut r, &header),
+            "NiTriStripsData" => parse_tri_strips_data(&mut r, &header),
             "BSTriShape" | "BSSubIndexTriShape" => parse_tri_shape(&mut r, &header),
             "BSGeometry" => parse_bs_geometry(&mut r, &header),
+            "BSShaderPPLightingProperty" => parse_shader_property(&mut r, &header, true),
             "BSLightingShaderProperty" => parse_shader_property(&mut r, &header, true),
             "BSEffectShaderProperty" => parse_shader_property(&mut r, &header, false),
             "BSShaderTextureSet" => parse_texture_set(&mut r),
             "NiAlphaProperty" => parse_alpha_property(&mut r, &header),
             "NiIntegerExtraData" | "BSXFlags" => parse_int_extra(&mut r, &header),
-            _ => Ok(Block::Unknown),
+            _ => handle_unknown_block(offset, type_name),
         };
         let block = match parsed {
             Ok(b) => {
@@ -552,7 +896,13 @@ pub(super) fn parse_blocks(bytes: &[u8]) -> Result<ParsedNif> {
                 b
             }
             Err(e) => {
-                warn!("failed to parse block {} ({}): {}; skipping", i, type_name, e);
+                r.seek(parse_checkpoint)?;
+                let bytes = r.bytes(size).unwrap_or_default();
+                info!("offset {:02X?}, bytes: {:02X?}", parse_checkpoint, bytes);
+                warn!(
+                    "failed to parse block {} ({}): {}; skipping",
+                    i, type_name, e
+                );
                 Block::Unknown
             }
         };
@@ -697,6 +1047,27 @@ fn traverse(
                 geometry,
                 material: material_info(blocks, *shader, *alpha),
             });
+        }
+        Block::TriStrips {
+            av,
+            data,
+            skin: _,
+            shader,
+            alpha,
+        } => {
+            let world = mat_mul(parent, &local_transform(av));
+            let tri_strips_geometry = usize::try_from(*data)
+                .ok()
+                .and_then(|index| blocks.get(index))
+                .and_then(tri_strips_data_to_geometry);
+            if let Some(geometry) = tri_strips_geometry {
+                scene.meshes.push(NifMeshInstance {
+                    name: av.name().to_string(),
+                    transform: world,
+                    geometry,
+                    material: material_info(blocks, *shader, *alpha),
+                });
+            }
         }
         _ => {}
     }

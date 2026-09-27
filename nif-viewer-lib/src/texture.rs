@@ -330,7 +330,7 @@ pub fn decode_dds_rgba8(bytes: &[u8], is_normal_map: bool) -> Result<(Vec<u8>, u
             }
             out.copy_from_slice(&data[..needed]);
             if matches!(codec, DdsCodec::Bgra8) {
-                for px in out.chunks_exact_mut(4) {
+                for px in out.as_chunks_mut::<4>().0 {
                     px.swap(0, 2);
                 }
             }
@@ -352,7 +352,7 @@ pub fn decode_dds_rgba8(bytes: &[u8], is_normal_map: bool) -> Result<(Vec<u8>, u
                 }
                 write_block(&mut gray, w, h, bx, by, 1, &tmp);
             })?;
-            for (i, px) in out.chunks_exact_mut(4).enumerate() {
+            for (i, px) in out.as_chunks_mut::<4>().0.iter_mut().enumerate() {
                 px[0] = gray[i];
                 px[1] = gray[i];
                 px[2] = gray[i];
@@ -378,7 +378,7 @@ pub fn decode_dds_rgba8(bytes: &[u8], is_normal_map: bool) -> Result<(Vec<u8>, u
                 }
                 write_block(&mut rg, w, h, bx, by, 2, &tmp);
             })?;
-            for (i, px) in out.chunks_exact_mut(4).enumerate() {
+            for (i, px) in out.as_chunks_mut::<4>().0.iter_mut().enumerate() {
                 let r = rg[i * 2];
                 let g = rg[i * 2 + 1];
                 px[0] = r;
@@ -539,7 +539,7 @@ mod orm_tests {
 
     fn solid(v: u8, w: u32, h: u32) -> Rgba8Image {
         let mut data = vec![0u8; (w * h * 4) as usize];
-        for px in data.chunks_exact_mut(4) {
+        for px in data.as_chunks_mut::<4>().0 {
             px[0] = v;
             px[3] = 255;
         }
@@ -560,7 +560,7 @@ mod orm_tests {
         let metal = solid(30, 4, 4);
         let (data, w, h) = pack_orm(Some(&ao), Some(&rough), Some(&metal));
         assert_eq!((w, h), (4, 4));
-        for px in data.chunks_exact(4) {
+        for px in data.as_chunks::<4>().0 {
             assert_eq!(px, &[10, 20, 30, 255]);
         }
     }
@@ -570,7 +570,7 @@ mod orm_tests {
         let rough = solid(99, 2, 2);
         let (data, w, h) = pack_orm(None, Some(&rough), None);
         assert_eq!((w, h), (2, 2));
-        for px in data.chunks_exact(4) {
+        for px in data.as_chunks::<4>().0 {
             assert_eq!(px, &[255, 99, 0, 255]);
         }
     }

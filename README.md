@@ -1,22 +1,15 @@
 # NIF Viewer
 
-## This is a testbed for playing with WGPU and related technology across native and WebAssembly targets
+## Prerequisites
 
-Originally based on sotrh's Learn WGPU tutorial, available [here](https://sotrh.github.io/learn-wgpu/).
+### Build and release
 
-## Links
+- Rust
 
-### Latest: https://agreeable-dune-08facd403.azurestaticapps.net/
+### Unpacking Resources
 
-### Stable: https://victorious-grass-0945f1903.azurestaticapps.net/
-
-The testbed webapp is automatically built and deployed on PRs (Latest) and pushes to main (Stable and Latest).
-
-Other resources:
-
-- [WebGPU Spec](https://www.w3.org/TR/webgpu/)
-- [WGSL Spec](https://www.w3.org/TR/WGSL/)
-- [gfx-rs/wgpu](https://github.com/gfx-rs/wgpu)
+- Starfield
+- Starfield Creation Kit
 
 ## Native viewer
 
@@ -70,7 +63,6 @@ pack it (or just run `./build.ps1`, which does both):
 
 ```pwsh
 # from nif-viewer-lib:
-$env:RUSTFLAGS = '--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"'
 wasm-pack build --release --target web --out-dir pkg-web
 # from the repo root:
 dotnet pack nif-viewer-blazor/NifViewer.Blazor -c Release -o artifacts/
@@ -96,7 +88,6 @@ See `nif-viewer-blazor/NifViewer.Blazor/README.md` for the full API.
 Build the package (from `nif-viewer-lib`):
 
 ```pwsh
-$env:RUSTFLAGS = '--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"'
 wasm-pack build --release
 ```
 

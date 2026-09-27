@@ -158,7 +158,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    const SAMPLE_ROOT: &str = r"C:\Users\secro\Documents\StarfieldResources";
+    const SAMPLE_ROOT: &str = r"C:\Users\user\Documents\StarfieldResources";
 
     fn sample_root() -> Option<PathBuf> {
         let p = PathBuf::from(SAMPLE_ROOT);
@@ -240,9 +240,18 @@ mod tests {
 
         let hints = session.texture_hints();
         assert_eq!(hints.len(), 1);
-        assert_eq!(hints[0].mat_path, "materials/weapons/ar99/ar99_receiver.mat");
-        assert_eq!(hints[0].color, "textures/weapons/ar99/ar99_receiver_color.dds");
-        assert_eq!(hints[0].normal, "textures/weapons/ar99/ar99_receiver_normal.dds");
+        assert_eq!(
+            hints[0].mat_path,
+            "materials/weapons/ar99/ar99_receiver.mat"
+        );
+        assert_eq!(
+            hints[0].color,
+            "textures/weapons/ar99/ar99_receiver_color.dds"
+        );
+        assert_eq!(
+            hints[0].normal,
+            "textures/weapons/ar99/ar99_receiver_normal.dds"
+        );
         assert_eq!(hints[0].stem, "ar99_receiver");
 
         // Hint paths are speculative: never part of pending().
@@ -289,7 +298,8 @@ mod tests {
         // The dump drops the model prefix on texture stems: the exact hint
         // path is absent, but a suffix stem match ("receiver") exists.
         assert!(
-            root.join(r"textures\weapons\ar99\receiver_color.dds").exists(),
+            root.join(r"textures\weapons\ar99\receiver_color.dds")
+                .exists(),
             "expected suffix stem-match color texture on disk"
         );
     }
@@ -307,7 +317,9 @@ mod tests {
         assert!(session.file_end("a.mesh").is_err());
 
         session.file_begin("Geometries\\AB\\Hash.MESH", 3);
-        session.file_chunk("geometries/ab/hash.mesh", &[1, 2]).unwrap();
+        session
+            .file_chunk("geometries/ab/hash.mesh", &[1, 2])
+            .unwrap();
         session.file_chunk("geometries/ab/hash.mesh", &[3]).unwrap();
         session.file_end("geometries/ab/hash.mesh").unwrap();
 
@@ -331,7 +343,10 @@ mod tests {
                 let path = entry.path();
                 if path.is_dir() {
                     stack.push(path);
-                } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("mat")) {
+                } else if path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("mat"))
+                {
                     let bytes = std::fs::read(&path).unwrap();
                     let (albedo, normal) = nif::extract_mat_textures(&bytes);
                     if albedo.is_none() && normal.is_none() {
