@@ -53,7 +53,7 @@ try {
         Pop-Location
     }
 
-    Invoke-BuildCommand dotnet @('pack', 'nif-viewer-blazor/NifViewer.Blazor', '-c', 'Release', '-o', 'artifacts/')
+    Invoke-BuildCommand dotnet @('pack', 'nif-viewer-blazor/NifViewer.Blazor', '-c', 'Release', '-o', 'artifacts/', '-m:1')
 }
 finally {
     $env:RUSTFLAGS = $originalRustFlags

@@ -9,6 +9,7 @@ license = "MIT"
 [dependencies]
 scene-types = { path = "../scene-types", version = "0.1.0" }
 scene-renderer = { path = "../scene-renderer", version = "0.1.0", default-features = false }
+scene-navigation = { path = "../crates/scene-navigation", version = "0.1.0" }
 winit = { version = "0.30.13" }
 cgmath = "0.18"
 log = "0.4"

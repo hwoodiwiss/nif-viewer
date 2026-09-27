@@ -4,6 +4,8 @@
   "description": "A web app for testing the wasm32 target for nif-viewer-lib",
   "main": "index.js",
   "scripts": {
+    "test:navigation": "node ../crates/scene-navigation/tests/browser.mjs",
+    "test:blazor": "node test-blazor.mjs",
     "build": "webpack --config webpack.config.js",
     "start": "webpack-dev-server"
   },

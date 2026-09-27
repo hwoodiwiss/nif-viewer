@@ -9,13 +9,14 @@ plus the NIF-specific application layer:
 |---|---|
 | `scene-types` | Renderer-neutral CPU scene descriptors (`SceneData`, `MeshData`, `ImageData`, `MaterialDesc`, `InstanceDesc`), camera/light values, validation, normal/tangent preparation. No GPU, windowing or I/O. |
 | `scene-renderer` | `GpuContext`, `Renderer` (typed generational `SceneId` handles, transactional uploads, material types registered by key with per-type pipelines, draws batched by material), `RenderView`, frame encoding into caller-owned encoders, exact-frame capture/readback, and its shader package (`scene-renderer/shaders`: prelude defining the material ABI, compose pass, stock `basic` diffuse/normal material). No window, files or URLs. |
-| `scene-viewer` | Optional host layer: `SurfacePresenter`, `Viewer`, `ViewerHandle` command/status queue, keyboard navigation, shader loading from a directory or base URL, and a winit `ViewerApp` runner. |
+| `scene-viewer` | Optional host layer: `SurfacePresenter`, `Viewer`, `ViewerHandle` command/status queue, navigation (via `scene-navigation`), shader loading from a directory or base URL, and a winit `ViewerApp` runner. |
+| `scene-navigation` | Renderer-independent keyboard, mouse and controller navigation (fly/orbit rig, bindings, browser input lifecycle) in `crates/scene-navigation`. |
 | `nif-scene` | NIF/`.mesh`/`.mat` parsing (`nif`), staged dependency sessions (`load_session`), DDS decoding and ORM packing (`textures`), the `bethesda-pbr` material type (`materials`, WGSL in `nif-scene/shaders`), NIF → `SceneData` conversion (`nif_scene::nif_to_scene`) and native data-folder resolution (`disk`). No GPU, window or browser code. |
 | `nif-viewer-lib` | Entry points only: native `run()` and the wasm-bindgen exports, orchestrating `nif-scene` and `scene-viewer`. Re-exports `nif` for compatibility. |
 | `nif-viewer-app` | Native executable (initialises logging, calls `nif_viewer_lib::run`). |
 
 Dependency direction: `nif-viewer-lib → {nif-scene, scene-viewer}`,
-`scene-viewer → scene-renderer → scene-types`, `nif-scene → scene-types`.
+`scene-viewer → {scene-renderer, scene-navigation}`, `scene-renderer → scene-types`, `nif-scene → scene-types`.
 The renderer accepts only decoded in-memory images (`ImageData`: RGBA8 plus
 colour space); game texture formats such as DDS are decoded in `nif-scene`.
 See `scene-renderer/src/lib.rs` for the frame/capture contract and
@@ -44,6 +45,15 @@ stages, `materials` for type key → WGSL file.
 Minimal offscreen consumer (no window or NIF code):
 `cargo run -p scene-renderer --example offscreen_triangle`.
 
+## Scene navigation
+
+Native and WASM viewers support keyboard-only, mouse+keyboard, and Xbox-style
+controllers through the shared `scene-navigation` crate. Click/focus the canvas
+and press Enter, or press controller A. WASD/left stick moves, arrows/mouse/right
+stick looks, E/Q or RT/LT changes height, O/View switches Fly/Orbit, and F/Y frames
+the scene. Escape/B releases input. See [controls and configuration](crates/scene-navigation/CONTROLS.md)
+and the [implementation plan](docs/input-navigation-plan.md).
+
 ## Prerequisites
 
 ### Build and release
@@ -56,6 +66,8 @@ Minimal offscreen consumer (no window or NIF code):
 - Starfield Creation Kit
 
 ## Native viewer
+
+Run from the repository root so the viewer can load `shaders/` from disk.
 
 Run the desktop app with a NIF path as the first CLI argument, or via the `NIF_PATH`
 environment variable:
@@ -79,7 +91,10 @@ Native environment variables:
 | `NIF_VIEWER_SHADER_DIR` | Directory containing the renderer's shader `manifest.json`. Otherwise `<exe dir>/shaders`, `./shaders`, then (development builds) `scene-renderer/shaders` are searched |
 | `NIF_VIEWER_MATERIAL_DIR` | Directory containing the NIF material package's `manifest.json`. Otherwise `<exe dir>/materials/nif`, `./materials/nif`, then (development builds) `nif-scene/shaders` are searched |
 | `NIF_CAPTURE=<frame#>` | Automatically capture that frame number to `screenshot_NNNN_frame_{scene,output}.png` in the working directory (linear scene colour converted to sRGB, and the presented output when the surface allows copies) — useful for headless/scripted rendering checks |
-| `NIF_CAM_SPEED=<f32>` | Camera navigation speed; overrides the automatic scale-aware default (`bounding radius / 50`) applied when a model loads |
+| `NIF_CAM_SPEED=<f32>` | Legacy speed, multiplied by 60 for units/second; overrides the automatic scale-aware default on load |
+| `SCENE_NAV_SPEED=<f32>` | Units/second override, persistent across loads; takes precedence over `NIF_CAM_SPEED` |
+| `SCENE_NAVIGATION=<json>` | Navigation mode, sensitivity, deadzones and speed configuration |
+| `SCENE_NAV_DIAGNOSTICS=1` | Log controller samples and normalized input at 2 Hz |
 | `NIF_LIGHT_COLOR="r,g,b"` | Directional light colour as 0-1 floats (e.g. `"1,0.2,0.2"`) |
 | `NIF_LIGHT_DIR="x,y,z"` | Direction the light travels (normalized internally); setting this disables the slow auto-orbit |
 | `NIF_LIGHT_INTENSITY=<f32>` | Light intensity (default 8.0) |

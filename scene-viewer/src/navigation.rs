@@ -1,102 +1,114 @@
-//! Keyboard fly/orbit navigation for a look-at [`Camera`].
+//! Keyboard, mouse and controller navigation for a look-at [`Camera`],
+//! backed by the renderer-independent `scene-navigation` crate.
 
-use cgmath::{InnerSpace, Point3, Vector3};
+use std::sync::Arc;
+
 use scene_types::Camera;
-use winit::event::{ElementState, WindowEvent};
-use winit::keyboard::{Key, NamedKey};
+use winit::event::{DeviceEvent, WindowEvent};
+use winit::window::Window;
 
-/// WASD orbits/dollies around the target, Space/Ctrl move vertically,
-/// `[`/`]` halve/double the speed (world units per update).
-#[derive(Debug, Clone)]
+pub use scene_navigation::{Bounds, Mode, NavigationSettings, HELP};
+
+/// Adapts [`scene_navigation::CameraController`] to [`scene_types::Camera`].
 pub struct CameraController {
-    speed: f32,
-    up: bool,
-    down: bool,
-    forward: bool,
-    backward: bool,
-    left: bool,
-    right: bool,
+    inner: scene_navigation::CameraController,
+}
+
+fn to_nav(camera: &Camera, aspect: f32) -> scene_navigation::Camera {
+    scene_navigation::Camera {
+        eye: camera.eye.into(),
+        target: camera.target.into(),
+        up: camera.up.into(),
+        aspect,
+        fov_y: camera.fov_y_degrees,
+        z_near: camera.z_near,
+        z_far: camera.z_far,
+    }
+}
+
+fn from_nav(nav: &scene_navigation::Camera, camera: &mut Camera) {
+    camera.eye = nav.eye.into();
+    camera.target = nav.target.into();
+    camera.up = nav.up.into();
+    camera.fov_y_degrees = nav.fov_y;
+    camera.z_near = nav.z_near;
+    camera.z_far = nav.z_far;
 }
 
 impl CameraController {
-    pub fn new(speed: f32) -> Self {
+    /// `legacy_speed` is in world units per frame at a 60 Hz reference.
+    pub fn new(window: Arc<Window>, camera: &Camera, legacy_speed: f32) -> Self {
+        let aspect = aspect_of(&window);
         Self {
-            speed: speed.max(1e-6),
-            up: false,
-            down: false,
-            forward: false,
-            backward: false,
-            left: false,
-            right: false,
+            inner: scene_navigation::CameraController::new(
+                window,
+                &to_nav(camera, aspect),
+                legacy_speed,
+            ),
         }
     }
 
     pub fn speed(&self) -> f32 {
-        self.speed
+        self.inner.speed()
     }
 
-    pub fn set_speed(&mut self, speed: f32) {
-        self.speed = speed.max(1e-6);
+    /// Legacy speed: converted to world units/second at a fixed 60 Hz reference.
+    pub fn set_speed(&mut self, legacy_speed: f32) {
+        self.inner.set_speed(legacy_speed);
+    }
+
+    pub fn automatic_speed(&self) -> bool {
+        self.inner.automatic_speed()
+    }
+
+    pub fn configure(
+        &mut self,
+        settings: NavigationSettings,
+        camera: &Camera,
+        aspect: f32,
+    ) -> Result<(), String> {
+        self.inner.configure(settings, &to_nav(camera, aspect))
+    }
+
+    /// Frame (optionally) and remember a recoverable view for `bounds`.
+    pub fn set_bounds(&mut self, bounds: Bounds, camera: &mut Camera, aspect: f32, frame: bool) {
+        let mut nav = to_nav(camera, aspect);
+        self.inner.set_bounds(bounds, &mut nav, frame);
+        from_nav(&nav, camera);
+    }
+
+    pub fn deactivate(&mut self) {
+        self.inner.deactivate();
+    }
+
+    /// Adopt a camera pose set outside navigation, e.g. by a host command.
+    pub fn sync_pose(&mut self, camera: &Camera, aspect: f32) {
+        self.inner.sync_pose(&to_nav(camera, aspect));
+    }
+
+    pub fn device_event(&mut self, event: &DeviceEvent) {
+        self.inner.device_event(event);
     }
 
     /// Returns true when the event was consumed.
     pub fn process_event(&mut self, event: &WindowEvent) -> bool {
-        let WindowEvent::KeyboardInput { event, .. } = event else {
-            return false;
-        };
-        let pressed = event.state == ElementState::Pressed;
-        match &event.logical_key {
-            Key::Named(NamedKey::Space) => self.up = pressed,
-            Key::Named(NamedKey::Control) => self.down = pressed,
-            Key::Character(c) => match c.as_str() {
-                "w" => self.forward = pressed,
-                "s" => self.backward = pressed,
-                "a" => self.left = pressed,
-                "d" => self.right = pressed,
-                "[" if pressed => {
-                    self.set_speed(self.speed * 0.5);
-                    log::info!("camera speed: {}", self.speed);
-                }
-                "]" if pressed => {
-                    self.set_speed(self.speed * 2.0);
-                    log::info!("camera speed: {}", self.speed);
-                }
-                _ => return false,
-            },
-            _ => return false,
-        }
-        true
+        self.inner.process_inputs(event)
     }
 
-    pub fn update_camera(&self, camera: &mut Camera) {
-        let target = Point3::from(camera.target);
-        let up = Vector3::from(camera.up);
-        let mut eye = Point3::from(camera.eye);
+    /// Advance navigation. Returns true once when the screenshot action is pressed.
+    pub fn update_camera(&mut self, camera: &mut Camera, aspect: f32) -> bool {
+        let mut nav = to_nav(camera, aspect);
+        let screenshot = self.inner.update_camera(&mut nav);
+        from_nav(&nav, camera);
+        screenshot
+    }
+}
 
-        let forward = target - eye;
-        let forward_norm = forward.normalize();
-        if self.forward && forward.magnitude() > self.speed {
-            eye += forward_norm * self.speed;
-        }
-        if self.backward {
-            eye -= forward_norm * self.speed;
-        }
-
-        let right = forward_norm.cross(up);
-        let forward = target - eye;
-        let forward_mag = forward.magnitude();
-        if self.right {
-            eye = target - (forward + right * self.speed).normalize() * forward_mag;
-        }
-        if self.left {
-            eye = target - (forward - right * self.speed).normalize() * forward_mag;
-        }
-        if self.up {
-            eye += up * self.speed;
-        }
-        if self.down {
-            eye -= up * self.speed;
-        }
-        camera.eye = eye.into();
+pub(crate) fn aspect_of(window: &Window) -> f32 {
+    let size = window.inner_size();
+    if size.width == 0 || size.height == 0 {
+        1.0
+    } else {
+        size.width as f32 / size.height as f32
     }
 }

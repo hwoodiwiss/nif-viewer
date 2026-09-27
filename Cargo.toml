@@ -3,9 +3,10 @@ resolver = "2"
 members = [
     "scene-types",
     "scene-renderer",
+    "crates/scene-navigation",
     "scene-viewer",
     "nif-scene",
     "nif-viewer-lib",
     "nif-viewer-app",
 ]
-default-members = ["scene-types", "scene-renderer", "scene-viewer", "nif-scene", "nif-viewer-lib", "nif-viewer-app"]
+default-members = ["scene-types", "scene-renderer", "crates/scene-navigation", "scene-viewer", "nif-scene", "nif-viewer-lib", "nif-viewer-app"]
