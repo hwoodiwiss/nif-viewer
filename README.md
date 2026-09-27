@@ -1,5 +1,14 @@
 # NIF Viewer
 
+## Scene navigation
+
+Native and WASM viewers support keyboard-only, mouse+keyboard, and Xbox-style
+controllers through the shared `scene-navigation` crate. Click/focus the canvas
+and press Enter, or press controller A. WASD/left stick moves, arrows/mouse/right
+stick looks, E/Q or RT/LT changes height, O/View switches Fly/Orbit, and F/Y frames
+the scene. Escape/B releases input. See [controls and configuration](crates/scene-navigation/CONTROLS.md)
+and the [implementation plan](docs/input-navigation-plan.md).
+
 ## Prerequisites
 
 ### Build and release
@@ -12,6 +21,8 @@
 - Starfield Creation Kit
 
 ## Native viewer
+
+Run from the repository root so the viewer can load `shaders/` from disk.
 
 Run the desktop app with a NIF path as the first CLI argument, or via the `NIF_PATH`
 environment variable:
@@ -33,7 +44,10 @@ Native environment variables:
 |---|---|
 | `NIF_PATH` | NIF file to load at startup (CLI arg takes precedence) |
 | `NIF_CAPTURE=<frame#>` | Automatically capture the deferred G-buffers on that frame number to `screenshot_NNNN_*.png` in the working directory — useful for headless/scripted rendering checks |
-| `NIF_CAM_SPEED=<f32>` | Camera navigation speed; overrides the automatic scale-aware default (`bounding radius / 50`) applied when a model loads |
+| `NIF_CAM_SPEED=<f32>` | Legacy speed, multiplied by 60 for units/second; overrides the automatic scale-aware default on load |
+| `SCENE_NAV_SPEED=<f32>` | Units/second override, persistent across loads; takes precedence over `NIF_CAM_SPEED` |
+| `SCENE_NAVIGATION=<json>` | Navigation mode, sensitivity, deadzones and speed configuration |
+| `SCENE_NAV_DIAGNOSTICS=1` | Log controller samples and normalized input at 2 Hz |
 | `NIF_LIGHT_COLOR="r,g,b"` | Directional light colour as 0-1 floats (e.g. `"1,0.2,0.2"`) |
 | `NIF_LIGHT_DIR="x,y,z"` | Direction the light travels (normalized internally); setting this disables the slow auto-orbit |
 | `NIF_LIGHT_INTENSITY=<f32>` | Light intensity (default 3.0) |

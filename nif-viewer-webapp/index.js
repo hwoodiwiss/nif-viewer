@@ -15,8 +15,25 @@ const setStatus = (text) => {
 const camSpeedInput = document.getElementById("cam-speed");
 camSpeedInput.addEventListener("change", () => {
   const speed = parseFloat(camSpeedInput.value);
-  if (Number.isFinite(speed) && speed > 0) wasm.set_camera_speed(speed);
+  if (Number.isFinite(speed) && speed > 0) configureNavigation({ speed, automatic_speed: false });
 });
+
+function configureNavigation(changes) {
+  const status = JSON.parse(wasm.navigation_status());
+  if (status.settings) wasm.set_navigation_settings(JSON.stringify({ ...status.settings, ...changes }));
+}
+document.getElementById("nav-mode").addEventListener("change", (event) => configureNavigation({ mode: event.target.value }));
+document.getElementById("nav-frame").addEventListener("click", () => wasm.navigation_command("Frame"));
+document.getElementById("nav-reset").addEventListener("click", () => wasm.navigation_command("Reset"));
+setInterval(() => {
+  const state = JSON.parse(wasm.navigation_status());
+  if (!state.settings) return;
+  document.getElementById("nav-status").textContent = `${state.settings.mode} · ${state.settings.speed.toPrecision(4)} units/s · ${state.device} · ${state.active ? "Active" : "Focus canvas + Enter, click, or press controller A"}${state.captured ? " · Mouse captured (Escape releases)" : ""}`;
+  document.getElementById("nav-help").textContent = state.help;
+  if (document.activeElement !== camSpeedInput) camSpeedInput.value = state.settings.speed;
+  const mode = document.getElementById("nav-mode");
+  if (document.activeElement !== mode) mode.value = state.settings.mode;
+}, 250);
 
 const pushLight = () => {
   const hex = document.getElementById("light-color").value;

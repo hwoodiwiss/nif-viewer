@@ -12,6 +12,9 @@
     <NifViewerWasmInput Include="$(NifViewerRustLibDir)Cargo.toml" />
     <NifViewerWasmInput Include="$(NifViewerRustLibDir)build.rs" Condition="Exists('$(NifViewerRustLibDir)build.rs')" />
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)crates\scene-navigation\src\**\*.rs" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)crates\scene-navigation\Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot).cargo\config.toml" />
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.lock" Condition="Exists('$(NifViewerRepoRoot)Cargo.lock')" />
   </ItemGroup>
 

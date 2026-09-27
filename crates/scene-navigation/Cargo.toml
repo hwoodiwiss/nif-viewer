@@ -1,0 +1,22 @@
+[package]
+name = "scene-navigation"
+version = "0.1.0"
+edition = "2018"
+license = "MIT"
+description = "Shared native and browser scene navigation for nif-viewer and wgpu-testbed"
+
+[dependencies]
+cgmath = "0.18"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+web-time = "1"
+winit = { version = "0.30.13", features = ["serde"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+gilrs = "0.11.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "Event", "EventTarget", "KeyboardEvent", "MouseEvent", "WheelEvent", "Navigator", "Gamepad", "GamepadButton", "GamepadMappingType", "VisibilityState"] }

@@ -113,9 +113,12 @@
       <span id="status"></span>
     </div>
     <div class="controls">
-      <label>Speed:
-        <input type="number" id="cam-speed" min="0.001" step="0.1" value="0.2" style="width: 4.5rem" />
+      <label>Speed (units/s):
+        <input type="number" id="cam-speed" min="0.001" step="0.1" value="12" style="width: 6rem" />
       </label>
+      <label>Mode: <select id="nav-mode"><option>Fly</option><option>Orbit</option></select></label>
+      <button id="nav-frame">Frame scene</button>
+      <button id="nav-reset">Reset view</button>
       <label>Light: <input type="color" id="light-color" value="#ffffff" /></label>
       <label>Azimuth:
         <input type="range" id="light-azimuth" min="0" max="360" step="1" value="240" />
@@ -130,7 +133,9 @@
         <input type="checkbox" id="light-orbit" checked />
       </label>
     </div>
-    <canvas id="nif-canvas"></canvas>
+    <p id="nav-status" role="status">Initializing navigation…</p>
+    <details><summary>Navigation controls</summary><p id="nav-help"></p></details>
+    <canvas id="nif-canvas" tabindex="0" style="outline-offset: 2px"></canvas>
     <div id="structure-panel"></div>
     <script src="./bootstrap.js"></script>
   </body>

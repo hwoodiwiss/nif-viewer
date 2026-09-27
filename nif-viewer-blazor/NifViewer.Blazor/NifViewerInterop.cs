@@ -30,6 +30,44 @@ public sealed class NifViewerInterop(IJSRuntime jsRuntime) : IAsyncDisposable
         await module.InvokeVoidAsync("attach", canvasId);
     }
 
+    internal async Task<uint> AttachNavigationAsync(string canvasId)
+    {
+        await InitializeAsync();
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<uint>("attachHost", canvasId);
+    }
+
+    internal async ValueTask DetachNavigationAsync(uint generation)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("detachNavigation", generation);
+    }
+
+    public async Task SetNavigationSettingsAsync(NifNavigationSettings settings)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("setNavigationSettings", settings);
+    }
+
+    public async Task NavigationCommandAsync(string action)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("navigationCommand", action);
+    }
+
+    public async Task<NifNavigationStatus> GetNavigationStatusAsync()
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<NifNavigationStatus>("navigationStatus");
+    }
+
+    /// <summary>Replaces physical key bindings (winit KeyCode names to action names).</summary>
+    public async Task SetNavigationBindingsAsync(IReadOnlyDictionary<string, string> bindings)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("setNavigationBindings", bindings);
+    }
+
     /// <summary>
     /// Loads a NIF model, resolving external dependencies (meshes, materials,
     /// textures) through <paramref name="resolver"/> if provided.

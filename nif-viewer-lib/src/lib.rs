@@ -12,9 +12,8 @@ use std::rc::Rc;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ElementState, WindowEvent},
+    event::{DeviceEvent, DeviceId, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{Key, NamedKey},
     window::{Window, WindowId},
 };
 
@@ -66,6 +65,23 @@ impl App {
 }
 
 impl ApplicationHandler for App {
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        if let Some(state) = self.state.as_mut() {
+            state.device_input(&event);
+        }
+    }
+
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(state) = self.state.as_mut() {
+            state.deactivate_navigation();
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -293,16 +309,6 @@ impl ApplicationHandler for App {
             WindowEvent::ScaleFactorChanged { .. } => {
                 state.resize(window.inner_size());
             }
-            WindowEvent::KeyboardInput {
-                event: ref key_event,
-                ..
-            } if key_event.state == ElementState::Pressed => {
-                if let Key::Named(key) = key_event.logical_key {
-                    if key == NamedKey::Escape {
-                        event_loop.exit();
-                    }
-                }
-            }
             WindowEvent::RedrawRequested => {
                 state.update();
                 state.render();
@@ -349,6 +355,44 @@ pub fn set_camera_speed(speed: f32) {
     WASM_PENDING_CAMERA_SPEED.with(|cell| {
         *cell.borrow_mut() = Some(speed);
     });
+}
+
+/// Navigation settings JSON; speed is in world units/second.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn set_navigation_settings(json: &str) -> Result<(), JsValue> {
+    scene_navigation::web::settings(json)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn navigation_command(action: &str) -> Result<(), JsValue> {
+    scene_navigation::web::command(action)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn navigation_status() -> String {
+    scene_navigation::web::status()
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn set_navigation_bindings(json: &str) -> Result<(), JsValue> {
+    scene_navigation::web::bindings(json)
+}
+
+/// Returns an attachment generation used to prevent stale component disposal.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn navigation_attach() -> Result<u32, JsValue> {
+    scene_navigation::web::attach()
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn navigation_detach(generation: u32) -> Result<(), JsValue> {
+    scene_navigation::web::detach(generation)
 }
 
 /// Configure the directional light (applied on the next event-loop tick).
