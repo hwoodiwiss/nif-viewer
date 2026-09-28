@@ -1,9 +1,12 @@
 @using Microsoft.AspNetCore.Components
 @inject NifViewerInterop Interop
+@implements IAsyncDisposable
 
-<canvas id="@Id" style="@Style"></canvas>
+<div id="@(Id + "-host")" style="@Style"></div>
 
 @code {
+    private uint? _navigationGeneration;
+    private bool _disposed;
     /// <summary>Canvas element id; auto-generated if not set.</summary>
     [Parameter]
     public string Id { get; set; } = $"nif-canvas-{Guid.NewGuid():N}";
@@ -17,7 +20,11 @@
         if (firstRender)
         {
             await Interop.InitializeAsync();
-            await Interop.AttachAsync(Id);
+            _navigationGeneration = await Interop.AttachNavigationAsync(Id);
+            if (_disposed)
+            {
+                await Interop.DetachNavigationAsync(_navigationGeneration.Value);
+            }
         }
     }
 
@@ -28,4 +35,24 @@
     public Task SetCameraSpeedAsync(float speed) => Interop.SetCameraSpeedAsync(speed);
 
     public Task SetLightAsync(NifLightSettings settings) => Interop.SetLightAsync(settings);
+
+    public Task SetNavigationSettingsAsync(NifNavigationSettings settings) => Interop.SetNavigationSettingsAsync(settings);
+    public Task<NifNavigationStatus> GetNavigationStatusAsync() => Interop.GetNavigationStatusAsync();
+    public Task NavigationCommandAsync(string action) => Interop.NavigationCommandAsync(action);
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_navigationGeneration is { } generation)
+        {
+            try
+            {
+                await Interop.DetachNavigationAsync(generation);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException)
+            {
+                // The browser context has already gone away.
+            }
+        }
+    }
 }

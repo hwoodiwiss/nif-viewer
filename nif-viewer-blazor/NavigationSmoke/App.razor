@@ -1,0 +1,31 @@
+@using NifViewer.Blazor
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+
+<h1>Packaged navigation smoke host</h1>
+<button id="toggle" @onclick="Toggle">Attach / detach viewer</button>
+<input id="host-field" placeholder="Typing here must not move the camera" />
+@if (_visible)
+{
+    <NifViewerCanvas @ref="_viewer" Id="smoke-canvas" />
+    <NifViewerControls Viewer="_viewer" />
+}
+
+@code {
+    private bool _visible = true;
+    private NifViewerCanvas? _viewer;
+    private bool _refreshReference = true;
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_refreshReference)
+        {
+            _refreshReference = false;
+            StateHasChanged();
+        }
+    }
+    private void Toggle()
+    {
+        _visible = !_visible;
+        _refreshReference = _visible;
+    }
+}

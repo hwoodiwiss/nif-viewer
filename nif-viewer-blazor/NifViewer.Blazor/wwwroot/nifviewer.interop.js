@@ -39,6 +39,49 @@ export async function init() {
 export async function attach(canvasId) {
   await init();
   wasm.attach(canvasId);
+  // GPU initialization is asynchronous; wait for navigation rather than guessing a delay.
+  const deadline = performance.now() + 30000;
+  while (!JSON.parse(wasm.navigation_status()).settings) {
+    if (performance.now() > deadline) throw new Error("Viewer navigation initialization timed out");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const generation = wasm.navigation_attach();
+  // Complete the queued lifecycle reset before exposing the attachment as ready.
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  document.getElementById(canvasId)?.setAttribute("data-navigation-ready", String(generation));
+  return generation;
+}
+
+// Blazor owns the empty container, while JS/winit own its canvas. Rehoming a
+// canvas that Blazor itself rendered would invalidate Blazor's DOM bookkeeping.
+export async function attachHost(canvasId) {
+  const host = document.getElementById(`${canvasId}-host`);
+  if (!host) throw new Error(`Viewer host '${canvasId}-host' is missing`);
+  const canvas = document.createElement("canvas");
+  canvas.id = canvasId;
+  canvas.style.cssText = "width:100%;height:100%;display:block";
+  host.replaceChildren(canvas);
+  return attach(canvasId);
+}
+
+export function detachNavigation(generation) {
+  wasm.navigation_detach(generation);
+}
+
+export function setNavigationSettings(settings) {
+  wasm.set_navigation_settings(JSON.stringify(settings));
+}
+
+export function navigationCommand(action) {
+  wasm.navigation_command(action);
+}
+
+export function navigationStatus() {
+  return JSON.parse(wasm.navigation_status());
+}
+
+export function setNavigationBindings(bindings) {
+  wasm.set_navigation_bindings(JSON.stringify(bindings));
 }
 
 export async function setCameraSpeed(speed) {

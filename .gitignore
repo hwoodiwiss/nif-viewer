@@ -1,4 +1,6 @@
 /target
+**/test-results/
+**/playwright-report/
 **.spv
 **.sublime-project
 **.sublime-workspace

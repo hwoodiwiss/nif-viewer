@@ -1,10 +1,18 @@
 @using Microsoft.AspNetCore.Components
+@implements IAsyncDisposable
 
 <div class="nif-controls">
-    <label>Speed:
+    <label>Speed (units/s):
         <input type="number" min="0.001" step="0.1" value="@_speed"
                @onchange="OnSpeedChangedAsync" class="nif-controls-speed" />
     </label>
+    <label>Navigation:
+        <select value="@_navigation.Mode" @onchange="OnModeChangedAsync"><option>Fly</option><option>Orbit</option></select>
+    </label>
+    <button @onclick="FrameAsync">Frame scene</button>
+    <button @onclick="ResetAsync">Reset view</button>
+    <span role="status">@_navigationStatus</span>
+    <details><summary>Navigation controls</summary>@_navigationHelp</details>
     <label>Light:
         <input type="color" value="@_color" @oninput="OnColorChangedAsync" />
     </label>
@@ -41,7 +49,73 @@
     // y = -sin(el)).
     private static readonly (double Azimuth, double Elevation) DefaultAngles = AnglesFromDirection(-0.4, -0.8, -0.45);
 
-    private double _speed = 0.2;
+    private double _speed = 12;
+    private NifNavigationSettings _navigation = new();
+    private string _navigationStatus = "Focus canvas and press Enter, or press controller A";
+    private string _navigationHelp = "WASD move; E/Q up/down; arrows or right-drag look; O switches mode; Escape releases. Xbox: left stick move, right stick look, RT/LT up/down, Y frames, View switches mode.";
+    private readonly CancellationTokenSource _stop = new();
+    private Task? _statusTask;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _statusTask = PollStatusAsync();
+        }
+    }
+
+    private async Task PollStatusAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_stop.Token))
+            {
+                if (Viewer is null)
+                {
+                    continue;
+                }
+                var status = await Viewer.GetNavigationStatusAsync();
+                if (status.Settings is not { } settings)
+                {
+                    continue;
+                }
+                _navigation = settings;
+                _speed = settings.Speed;
+                _navigationHelp = status.Help;
+                _navigationStatus = $"{settings.Mode} · {status.Device} · {(status.Active ? "Active" : "Enter/A to activate")}";
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+        {
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException)
+        {
+        }
+    }
+
+    private async Task OnModeChangedAsync(ChangeEventArgs e)
+    {
+        _navigation = _navigation with { Mode = e.Value?.ToString() ?? "Fly" };
+        if (Viewer is not null)
+        {
+            await Viewer.SetNavigationSettingsAsync(_navigation);
+        }
+    }
+
+    private Task FrameAsync() => Viewer?.NavigationCommandAsync("Frame") ?? Task.CompletedTask;
+    private Task ResetAsync() => Viewer?.NavigationCommandAsync("Reset") ?? Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        await _stop.CancelAsync();
+        if (_statusTask is not null)
+        {
+            await _statusTask;
+        }
+        _stop.Dispose();
+    }
     private string _color = "#ffffff";
     private double _azimuth = DefaultAngles.Azimuth;
     private double _elevation = DefaultAngles.Elevation;
@@ -72,7 +146,8 @@
         _speed = speed;
         if (Viewer is not null)
         {
-            await Viewer.SetCameraSpeedAsync((float)speed);
+            _navigation = _navigation with { Speed = (float)speed, AutomaticSpeed = false };
+            await Viewer.SetNavigationSettingsAsync(_navigation);
         }
     }
 

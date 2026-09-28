@@ -105,3 +105,19 @@ small `window.fetch` patch that transparently redirects `shaders/...` and
 `resources/...` requests there — no host configuration is needed. If your app
 serves its own files under top-level `shaders/` or `resources/` paths, those
 will be shadowed by the redirect; rename them or serve them elsewhere.
+
+## Navigation (preview.6)
+
+`NifViewerCanvas` supports keyboard, mouse and standard-mapped controllers. Its
+input attachment is automatically deactivated on component disposal, with a
+generation token protecting a newer canvas attachment from stale disposal.
+
+Use `SetNavigationSettingsAsync(new NifNavigationSettings { Speed = 25,
+AutomaticSpeed = false })` for units/second configuration. Existing
+`SetCameraSpeedAsync(0.2f)` remains a legacy adapter equivalent to 12 units/second.
+`NavigationCommandAsync("Frame")` and `NavigationCommandAsync("Reset")` recover
+a useful view. `GetNavigationStatusAsync()` returns actual settings/device status.
+`NifViewerControls` shows mode, speed, help and navigation status.
+
+Mouse capture is requested by L in the canvas's browser event handler. Escape/B
+releases navigation; Tab leaves the canvas. Pairing/file selection remains host UI.

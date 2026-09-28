@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/scene-navigation",
     "nif-viewer-lib",
     "nif-viewer-app",
 ]

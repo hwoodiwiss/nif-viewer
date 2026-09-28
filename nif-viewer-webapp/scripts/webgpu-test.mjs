@@ -6,7 +6,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import puppeteer from "puppeteer-core";
+import { chromium } from "@playwright/test";
 
 const [browserExe, dataRoot, nifRel] = process.argv.slice(2);
 const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
@@ -69,9 +69,9 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(8123, r));
 
-const browser = await puppeteer.launch({
+const browser = await chromium.launch({
   executablePath: browserExe,
-  headless: "new",
+  headless: true,
   args: [
     "--enable-unsafe-webgpu",
     "--enable-features=WebGPU",
@@ -79,12 +79,11 @@ const browser = await puppeteer.launch({
     "--window-size=1400,900",
   ],
 });
-const page = await browser.newPage();
-await page.setViewport({ width: 1400, height: 900 });
+const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 page.on("console", (m) => console.log(`[console:${m.type()}]`, m.text()));
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 
-await page.goto("http://localhost:8123/", { waitUntil: "networkidle0" });
+await page.goto("http://localhost:8123/", { waitUntil: "networkidle" });
 await new Promise((r) => setTimeout(r, 3000)); // let wgpu init + first frames
 await page.screenshot({ path: "test-before-load.png" });
 

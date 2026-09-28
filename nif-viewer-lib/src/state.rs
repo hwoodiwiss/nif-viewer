@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
-use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc;
+use std::sync::Arc;
 
 use crate::camera::CameraController;
 use crate::file_reader::FileReader;
@@ -18,7 +18,6 @@ use wgpu::{
     ExperimentalFeatures, InstanceDescriptor, PowerPreference, SamplerBindingType,
     TexelCopyBufferInfo, TexelCopyTextureInfo,
 };
-use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{event::WindowEvent, window::Window};
 
 use crate::camera::Camera;
@@ -88,8 +87,7 @@ pub struct State<'a> {
 impl<'a> State<'a> {
     pub async fn new(
         window: Arc<Window>,
-        #[cfg(not(target_arch = "wasm32"))]
-        data_export: mpsc::Sender<MappedTextureView>,
+        #[cfg(not(target_arch = "wasm32"))] data_export: mpsc::Sender<MappedTextureView>,
     ) -> Self {
         let mut size = window.inner_size();
         // Guard against a zero-sized window/canvas (e.g. before web layout):
@@ -240,7 +238,7 @@ impl<'a> State<'a> {
             z_far: 1000.0,
         };
 
-        let camera_controller = CameraController::new(0.2);
+        let camera_controller = CameraController::new(window.clone(), &camera, 0.2);
 
         let mut uniforms = Uniforms::new();
         uniforms.set_manual_gamma(!surface_format.is_srgb());
@@ -588,13 +586,12 @@ impl<'a> State<'a> {
                 usage: wgpu::BufferUsages::VERTEX,
             });
 
-        // Auto-frame the camera on the model's bounding sphere.
+        // Frame in renderer Y-up coordinates and remember a recoverable view.
         if let Some((center, radius)) = model.bounds {
-            let center = cgmath::Point3::new(center[0], center[1], center[2]);
-            let distance = radius * 2.5;
-            self.camera.target = center;
-            self.camera.eye = center + cgmath::Vector3::new(0.0, distance * 0.35, distance);
-            self.camera.z_far = (distance * 10.0).max(1000.0);
+            if let Some(bounds) = scene_navigation::Bounds::new(center, radius) {
+                self.camera_controller
+                    .set_bounds(bounds, &mut self.camera, true);
+            }
 
             // Scale-aware navigation speed; NIF_CAM_SPEED overrides natively.
             #[allow(unused_mut)]
@@ -606,7 +603,9 @@ impl<'a> State<'a> {
             {
                 speed = env_speed;
             }
-            self.camera_controller.set_speed(speed);
+            if self.camera_controller.automatic_speed() {
+                self.camera_controller.set_speed(speed);
+            }
             info!("camera speed set to {speed}");
         }
 
@@ -680,23 +679,18 @@ impl<'a> State<'a> {
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        self.camera_controller.process_inputs(event) || self.process_inputs(event)
+        self.camera_controller.process_inputs(event)
     }
 
-    fn process_inputs(&mut self, event: &WindowEvent) -> bool {
-        if let WindowEvent::KeyboardInput { event: key, .. } = event {
-            if let PhysicalKey::Code(code) = key.physical_key {
-                if code == KeyCode::Backspace && key.state.is_pressed() {
-                    self.capture_next_frame = true;
-                    return true;
-                }
-            }
-        }
-
-        false
+    pub fn device_input(&mut self, event: &winit::event::DeviceEvent) {
+        self.camera_controller.device_event(event);
     }
 
-    /// Set the camera navigation speed (world units per frame while a key is held).
+    pub fn deactivate_navigation(&mut self) {
+        self.camera_controller.deactivate();
+    }
+
+    /// Legacy speed: converted to world units/second at a fixed 60 Hz reference.
     pub fn set_camera_speed(&mut self, speed: f32) {
         self.camera_controller.set_speed(speed);
         info!("camera speed set to {}", speed);
@@ -720,7 +714,7 @@ impl<'a> State<'a> {
         self.queue
             .write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[light]));
 
-        self.camera_controller.update_camera(&mut self.camera);
+        self.capture_next_frame |= self.camera_controller.update_camera(&mut self.camera);
         self.uniforms.update_view_proj(&self.camera);
         self.queue.write_buffer(
             &self.uniform_buffer,
@@ -1016,12 +1010,9 @@ impl<'a> State<'a> {
                 {
                     use image::ImageEncoder;
                     let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
-                    if let Err(e) = encoder.write_image(
-                        &pixels,
-                        width,
-                        height,
-                        image::ExtendedColorType::Rgba8,
-                    ) {
+                    if let Err(e) =
+                        encoder.write_image(&pixels, width, height, image::ExtendedColorType::Rgba8)
+                    {
                         web_sys::console::error_1(
                             &format!("Screenshot PNG encode failed: {e}").into(),
                         );
@@ -1031,9 +1022,7 @@ impl<'a> State<'a> {
 
                 // Trigger a browser download
                 if let Err(e) = trigger_browser_download(&png_bytes, &format!("{name}.png")) {
-                    web_sys::console::error_1(
-                        &format!("Screenshot download failed: {e:?}").into(),
-                    );
+                    web_sys::console::error_1(&format!("Screenshot download failed: {e:?}").into());
                 }
             }
         });
@@ -1054,11 +1043,19 @@ fn parse_vec3(s: &str) -> Option<[f32; 3]> {
 /// Apply NIF_LIGHT_* env var overrides. Setting NIF_LIGHT_DIR disables auto-orbit.
 #[cfg(not(target_arch = "wasm32"))]
 fn apply_light_env(settings: &mut LightSettings) {
-    if let Some(c) = std::env::var("NIF_LIGHT_COLOR").ok().as_deref().and_then(parse_vec3) {
+    if let Some(c) = std::env::var("NIF_LIGHT_COLOR")
+        .ok()
+        .as_deref()
+        .and_then(parse_vec3)
+    {
         settings.colour = c;
         info!("NIF_LIGHT_COLOR applied: {:?}", c);
     }
-    if let Some(d) = std::env::var("NIF_LIGHT_DIR").ok().as_deref().and_then(parse_vec3) {
+    if let Some(d) = std::env::var("NIF_LIGHT_DIR")
+        .ok()
+        .as_deref()
+        .and_then(parse_vec3)
+    {
         settings.direction = crate::light::normalize(d);
         settings.auto_orbit = false;
         info!(
@@ -1103,9 +1100,7 @@ fn trigger_browser_download(data: &[u8], filename: &str) -> Result<(), wasm_bind
         .document()
         .ok_or_else(|| wasm_bindgen::JsValue::from_str("no document"))?;
 
-    let anchor: HtmlAnchorElement = document
-        .create_element("a")?
-        .dyn_into()?;
+    let anchor: HtmlAnchorElement = document.create_element("a")?.dyn_into()?;
     anchor.set_href(&url);
     anchor.set_download(filename);
     anchor.click();
