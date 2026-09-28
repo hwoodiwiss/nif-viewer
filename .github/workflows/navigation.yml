@@ -26,8 +26,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: browser-actions/setup-chrome@v2
-        id: chrome
       - run: cargo install wasm-pack --locked
       - run: wasm-pack build --release --target web --out-dir pkg-web
         working-directory: nif-viewer-lib
@@ -35,14 +33,17 @@ jobs:
         working-directory: nif-viewer-lib
       - run: npm ci
         working-directory: nif-viewer-webapp
+      - run: npx playwright install chromium
+        working-directory: nif-viewer-webapp
       - run: npm run build
         working-directory: nif-viewer-webapp
       - run: npm run test:navigation
         working-directory: nif-viewer-webapp
-        env:
-          BROWSER_EXECUTABLE: ${{ steps.chrome.outputs.chrome-path }}
-      - run: npm run test:navigation
-        working-directory: nif-viewer-webapp
-        env:
-          BROWSER_EXECUTABLE: ${{ steps.chrome.outputs.chrome-path }}
-          WASM_HOST: bundler
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-navigation
+          path: |
+            nif-viewer-webapp/playwright-report/
+            nif-viewer-webapp/test-results/
+          retention-days: 14

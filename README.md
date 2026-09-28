@@ -7,7 +7,7 @@ controllers through the shared `scene-navigation` crate. Click/focus the canvas
 and press Enter, or press controller A. WASD/left stick moves, arrows/mouse/right
 stick looks, E/Q or RT/LT changes height, O/View switches Fly/Orbit, and F/Y frames
 the scene. Escape/B releases input. See [controls and configuration](crates/scene-navigation/CONTROLS.md)
-and the [implementation plan](docs/input-navigation-plan.md).
+and the [navigation implementation and verification](docs/input-navigation.md).
 
 ## Prerequisites
 
