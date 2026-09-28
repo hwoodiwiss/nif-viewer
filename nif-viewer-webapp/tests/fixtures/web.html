@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>NIF navigation test host</title>
+  </head>
+  <body>
+    <label>Host field <input id="host-field" /></label>
+    <canvas
+      id="scene"
+      width="800"
+      height="600"
+      style="width: 800px; height: 600px"
+    ></canvas>
+    <button id="after-canvas">After canvas</button>
+    <script type="module">
+      import init, * as wasm from "/interop/nif_viewer_lib.js";
+      await init();
+      window.nifViewer = wasm;
+      wasm.attach("scene");
+    </script>
+  </body>
+</html>

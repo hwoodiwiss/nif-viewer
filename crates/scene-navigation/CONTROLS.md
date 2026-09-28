@@ -76,16 +76,16 @@ Run `cargo test -p scene-navigation` for deterministic input/camera tests. From
 either webapp after building `pkg-web`, `pkg`, and the webapp:
 
 ```powershell
-$env:BROWSER_EXECUTABLE = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+npx playwright install chromium
 npm run test:navigation
-$env:WASM_HOST = 'bundler'
-npm run test:navigation
+npx playwright test --project=bundler --headed
 ```
 
 The browser suite exercises real WASM, generated NIF geometry/testbed geometry,
 displayed pixel changes, keyboard/right-drag, focus/Tab, simulated standard
 gamepads, disconnect and NIF attachment generations. Gamepad simulation does not
-validate the physical driver. Run headed by setting `HEADED=1`.
+validate the physical driver. Both packaging projects run by default; see
+[browser test setup](../../nif-viewer-webapp/tests/README.md) for filtering and diagnostics.
 
 Hardware acceptance still requires Xbox USB and Bluetooth checks: both sticks,
 both triggers separately/together, all bindings, 60-second idle drift, hotplug
