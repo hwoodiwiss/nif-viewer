@@ -585,12 +585,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fastrand"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
-
-[[package]]
 name = "fdeflate"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -655,12 +649,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
-name = "fs_extra"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
-
-[[package]]
 name = "futures"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -707,19 +695,6 @@ name = "futures-io"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cecba35d7ad927e23624b22ad55235f2239cfa44fd10428eecbeba6d6a717718"
-
-[[package]]
-name = "futures-lite"
-version = "2.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f78e10609fe0e0b3f4157ffab1876319b5b0db102a2c60dc4626306dc46b44ad"
-dependencies = [
- "fastrand",
- "futures-core",
- "futures-io",
- "parking",
- "pin-project-lite",
-]
 
 [[package]]
 name = "futures-macro"
@@ -808,12 +783,6 @@ dependencies = [
  "log",
  "xml-rs",
 ]
-
-[[package]]
-name = "glob"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "glow"
@@ -925,8 +894,6 @@ dependencies = [
  "moxcms",
  "num-traits",
  "png",
- "zune-core",
- "zune-jpeg",
 ]
 
 [[package]]
@@ -1195,9 +1162,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "nif-scene"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bcdec_rs",
+ "bitflags 2.13.1",
+ "ddsfile",
+ "env_logger",
+ "half",
+ "log",
+ "scene-types",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "nif-viewer-app"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
+ "log",
  "nif-viewer-lib",
 ]
 
@@ -1206,30 +1191,22 @@ name = "nif-viewer-lib"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bcdec_rs",
- "bitflags 2.13.1",
- "bytemuck",
- "cgmath",
  "console_error_panic_hook",
  "console_log",
- "ddsfile",
- "env_logger",
- "fs_extra",
  "futures",
  "getrandom 0.2.17",
  "getrandom 0.3.4",
- "glob",
- "half",
  "image",
  "js-sys",
  "log",
+ "nif-scene",
+ "scene-renderer",
+ "scene-types",
+ "scene-viewer",
  "serde_json",
- "tobj",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "wgpu",
- "winit",
 ]
 
 [[package]]
@@ -1564,12 +1541,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parking"
-version = "2.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
-
-[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1872,6 +1843,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "scene-renderer"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "futures",
+ "half",
+ "log",
+ "scene-types",
+ "serde_json",
+ "thiserror 2.0.18",
+ "wgpu",
+]
+
+[[package]]
+name = "scene-types"
+version = "0.1.0"
+dependencies = [
+ "cgmath",
+]
+
+[[package]]
+name = "scene-viewer"
+version = "0.1.0"
+dependencies = [
+ "cgmath",
+ "futures",
+ "js-sys",
+ "log",
+ "scene-renderer",
+ "scene-types",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "winit",
+]
+
+[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2121,16 +2129,6 @@ dependencies = [
  "arrayref",
  "bytemuck",
  "strict-num",
-]
-
-[[package]]
-name = "tobj"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04aca6092e5978e708ee784e8ab9b5cf3cdb598b28f99a2f257446e7081a7025"
-dependencies = [
- "ahash",
- "futures-lite",
 ]
 
 [[package]]
@@ -3023,18 +3021,3 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[package]]
-name = "zune-core"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb8a0807f7c01457d0379ba880ba6322660448ddebc890ce29bb64da71fb40f9"
-
-[[package]]
-name = "zune-jpeg"
-version = "0.5.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b7a1c0af6e5d8d1363f4994b7a091ccf963d8b694f7da5b0b9cceb82da2c0a6"
-dependencies = [
- "zune-core",
-]

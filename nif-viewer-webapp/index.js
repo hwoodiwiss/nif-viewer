@@ -3,7 +3,9 @@ import * as wasm from "../nif-viewer-lib/pkg/nif_viewer_lib";
 // Expose the module for external hosts (Blazor interop, debugging, tests).
 window.nifViewer = wasm;
 
-wasm.attach("nif-canvas");
+wasm.attach("nif-canvas", "shaders/").catch((e) => {
+  document.getElementById("status").textContent = `Viewer failed to start: ${e}`;
+});
 
 const status = document.getElementById("status");
 const setStatus = (text) => {

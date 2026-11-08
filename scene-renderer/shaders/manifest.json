@@ -1,0 +1,8 @@
+{
+  "abi_version": 1,
+  "profile": "nif-pbr-compat",
+  "files": {
+    "geometry": "geometry.wgsl",
+    "compose": "compose.wgsl"
+  }
+}

@@ -1,5 +1,29 @@
 # NIF Viewer
 
+## Repository layout
+
+The renderer is split into reusable crates that know nothing about NIF files,
+plus the NIF-specific application layer:
+
+| Crate | Owns |
+|---|---|
+| `scene-types` | Renderer-neutral CPU scene descriptors (`SceneData`, `MeshData`, `ImageData`, `MaterialDesc`, `InstanceDesc`), camera/light values, validation, normal/tangent preparation. No GPU, windowing or I/O. |
+| `scene-renderer` | `GpuContext`, `Renderer` (typed generational `SceneId` handles, transactional uploads), `RenderView`, frame encoding into caller-owned encoders, exact-frame capture/readback, DDS/ORM CPU utilities and the default WGSL shader set + `manifest.json` (`scene-renderer/shaders`). No window, files or URLs. |
+| `scene-viewer` | Optional host layer: `SurfacePresenter`, `Viewer`, `ViewerHandle` command/status queue, keyboard navigation, shader loading from a directory or base URL, and a winit `ViewerApp` runner. |
+| `nif-scene` | NIF/`.mesh`/`.mat` parsing (`nif`), staged dependency sessions (`load_session`), DDS decoding and ORM packing (`textures`), NIF → `SceneData` conversion (`nif_scene::nif_to_scene`) and native data-folder resolution (`disk`). No GPU, window or browser code. |
+| `nif-viewer-lib` | Entry points only: native `run()` and the wasm-bindgen exports, orchestrating `nif-scene` and `scene-viewer`. Re-exports `nif` for compatibility. |
+| `nif-viewer-app` | Native executable (initialises logging, calls `nif_viewer_lib::run`). |
+
+Dependency direction: `nif-viewer-lib → {nif-scene, scene-viewer}`,
+`scene-viewer → scene-renderer → scene-types`, `nif-scene → scene-types`.
+The renderer accepts only decoded in-memory images (`ImageData`: RGBA8 plus
+colour space); game texture formats such as DDS are decoded in `nif-scene`.
+See `scene-renderer/src/lib.rs` for the frame/capture contract and
+`scene-types/src/lib.rs` for coordinate, matrix, UV, tangent and colour conventions.
+
+Minimal offscreen consumer (no window or NIF code):
+`cargo run -p scene-renderer --example offscreen_triangle`.
+
 ## Prerequisites
 
 ### Build and release
@@ -32,33 +56,59 @@ Native environment variables:
 | Variable | Effect |
 |---|---|
 | `NIF_PATH` | NIF file to load at startup (CLI arg takes precedence) |
-| `NIF_CAPTURE=<frame#>` | Automatically capture the deferred G-buffers on that frame number to `screenshot_NNNN_*.png` in the working directory — useful for headless/scripted rendering checks |
+| `NIF_VIEWER_SHADER_DIR` | Directory containing the shader `manifest.json`. Otherwise `<exe dir>/shaders`, `./shaders`, then (development builds) `scene-renderer/shaders` are searched |
+| `NIF_CAPTURE=<frame#>` | Automatically capture that frame number to `screenshot_NNNN_frame_{scene,output}.png` in the working directory (linear scene colour converted to sRGB, and the presented output when the surface allows copies) — useful for headless/scripted rendering checks |
 | `NIF_CAM_SPEED=<f32>` | Camera navigation speed; overrides the automatic scale-aware default (`bounding radius / 50`) applied when a model loads |
 | `NIF_LIGHT_COLOR="r,g,b"` | Directional light colour as 0-1 floats (e.g. `"1,0.2,0.2"`) |
 | `NIF_LIGHT_DIR="x,y,z"` | Direction the light travels (normalized internally); setting this disables the slow auto-orbit |
-| `NIF_LIGHT_INTENSITY=<f32>` | Light intensity (default 3.0) |
-| `NIF_LIGHT_AMBIENT=<f32>` | Constant ambient term (default 0.08) |
+| `NIF_LIGHT_INTENSITY=<f32>` | Light intensity (default 8.0) |
+| `NIF_LIGHT_AMBIENT=<f32>` | Constant ambient term (default 0.25) |
 | `RUST_LOG` | Standard `env_logger` filter (e.g. `info`); dependency resolution and heuristic texture hits are logged at `info`/`warn` |
 
-`Backspace` captures the G-buffers interactively at any time. `[` / `]` halve /
+`Backspace` captures the next frame interactively at any time. `[` / `]` halve /
 double the camera speed at runtime (the new value is logged).
 
 ### Rendering
 
-Materials use Bethesda-style roughness/metalness PBR (Cook-Torrance GGX).
+Materials use Bethesda-style roughness/metalness PBR (Cook-Torrance GGX),
+the `nif-pbr-compat` profile of shader ABI 1.
 Alongside `_color` and `_normal`, the `_rough`, `_metal` and `_ao` greyscale
 maps are resolved from `.mat` files (or heuristically) and packed CPU-side
 into a single linear ORM texture (R=AO, G=roughness, B=metalness); missing
 channels fall back to AO=1, roughness≈0.78, metalness=0. Lighting is a
 single configurable directional light plus constant ambient, Reinhard
-tone-mapped (with manual gamma encoding when the surface format is
-non-sRGB).
+tone-mapped into a linear `Rgba16Float` scene-colour target (rendered at 2×
+resolution); a compose pass resamples it to the output and gamma-encodes
+manually when the output format is non-sRGB. Missing tangents are generated
+on the CPU from UVs, with handedness preserved.
+
+Known limitations: NIF alpha blend/test flags are carried into the scene as
+`AlphaMode::Blend`/`Mask` but drawn opaque (each upload reports a diagnostic);
+NIF vertex colours are preserved but not applied; NIF two-sided flags are not
+interpreted (all materials draw both faces).
+
+### Regression tests
+
+`cargo test -p nif-viewer-lib --test regression` renders a generated NIF
+offscreen and compares conversion values, pixel samples and coverage against
+baselines recorded before the renderer was extracted into the `scene-*`
+crates. `cargo test -p scene-renderer --test offscreen` covers handles,
+rollback, captures, colour spaces and transforms. GPU tests skip without an
+adapter unless `NIF_VIEWER_REQUIRE_GPU=1`.
+
+For the browser path, build the webapp and run
+`node nif-viewer-webapp/scripts/webgpu-smoke.mjs <path to msedge/chrome>`; it
+serves `dist/` under a nested URL, loads a generated NIF and samples the
+presented WebGPU canvas.
+
+Tests against real Starfield assets are opt-in: set `NIF_STARFIELD_DATA_ROOT`
+to an extracted data folder and run `cargo test -p nif-scene -- --ignored`.
 
 ## C# / Blazor NuGet package
 
 `nif-viewer-blazor/NifViewer.Blazor` is a Razor class library (net10.0 + net11.0 preview) that
-packages the wasm viewer for BlazorWasm consumers, including the interop JS,
-shaders and fallback resources as static web assets. Build the wasm module and
+packages the wasm viewer for BlazorWasm consumers, including the interop JS and
+the renderer's shader manifest and WGSL files as static web assets. Build the wasm module and
 pack it (or just run `./build.ps1`, which does both):
 
 ```pwsh
@@ -93,11 +143,17 @@ wasm-pack build --release
 
 This produces `nif-viewer-lib/pkg`, an ES module exporting:
 
-- `attach(canvasId: string)` — attach the renderer to an existing `<canvas>` element by id and start the event loop.
+- `attach(canvasId: string, shaderBaseUrl?: string): Promise<void>` — attach the renderer to an existing `<canvas>` element by id. Fetches `manifest.json` and the WGSL files from `shaderBaseUrl` (default `"shaders/"`, relative to the page) and resolves once the viewer is ready; rejects with the initialisation error (e.g. no WebGPU adapter, missing or ABI-mismatched shaders). Calling it again re-homes the live canvas.
 - `run_wasm()` — legacy entry point that creates and appends its own canvas.
-- `set_camera_speed(speed: number)` — set the navigation speed (applied on the next event-loop tick; loading a model resets it to a scale-aware default of `bounding radius / 50`).
+- `viewer_status(): object` — `{ state, error, load: { ticket, name, state, error, diagnostics } }`. Viewer `state`: `initializing` / `ready` / `suspended` / `device-lost` / `failed` / `disposed`. Load `state`: `queued` / `uploaded` / `rendered` (first frame submitted) / `failed` / `superseded`.
+- `set_camera_speed(speed: number)` — set the navigation speed (applied on the next frame; loading a model resets it to a scale-aware default of `bounding radius / 50`).
 - `set_light(r, g, b, x, y, z, intensity, ambient, autoOrbit: boolean)` — configure the directional light: colour (0-1 floats), travel direction (normalized internally), intensity, constant ambient, and whether the direction slowly auto-orbits about the Y axis.
 - `parse_nif_structure(nifBytes: Uint8Array): object` — parse the raw block structure (header, block list with per-block fields and child refs, string table) without rendering; useful for introspection UIs.
+
+Commands issued before `attach` resolves are queued and applied once the
+viewer is ready. Serve the contents of `scene-renderer/shaders` (including
+`manifest.json`) at the shader base URL; the webapp's webpack config copies
+them to `dist/shaders`.
 
 ### Recommended: streaming session API
 
@@ -109,7 +165,7 @@ NIF first, then stream only the files it actually references, in chunks:
 - `load_session_file_chunk(path: string, chunk: Uint8Array)` — append a chunk (each chunk crosses the JS/wasm boundary once; no whole-file JS copy).
 - `load_session_file_end(path: string)` — mark the file complete; completed `.mat` files immediately reveal the `.dds` textures they reference.
 - `load_session_pending(): string[]` — paths still required but not yet provided (including `.dds` discovered from `.mat`s).
-- `load_session_finish()` — queue the model for rendering and clear the session. Missing dependencies never error — meshes without resolvable files fall back to the default material.
+- `load_session_finish(): string[]` — convert the model, queue it for upload and clear the session; returns paths that were required but never provided. Missing dependencies never error — meshes without resolvable files fall back to the default material. Upload and first frame are reported later through `viewer_status()`; the previous model stays visible if the new one fails.
 
 The loop: `begin` → stream each `pending()` file (`file_begin` → `file_chunk`… → `file_end`) → call `pending()` again (`.mat`s reveal `.dds`) → repeat until empty or nothing matches → `finish()`.
 
@@ -122,7 +178,10 @@ The loop: `begin` → stream each `pending()` file (`file_begin` → `file_chunk
 ```js
 // wwwroot/nifViewer.js
 import init, { attach, load_nif } from "./pkg/nif_viewer_lib.js";
-export async function start(canvasId) { await init(); attach(canvasId); }
+export async function start(canvasId) {
+  await init();
+  await attach(canvasId, new URL("./shaders/", import.meta.url).href);
+}
 export function load(name, bytes, files) { load_nif(name, bytes, files); }
 ```
 

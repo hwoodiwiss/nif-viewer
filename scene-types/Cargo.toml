@@ -1,0 +1,10 @@
+[package]
+name = "scene-types"
+version = "0.1.0"
+authors = ["Hugo Woodiwiss <hj.woodiwiss@gmail.com>"]
+edition = "2018"
+description = "Renderer-neutral CPU scene descriptors, validation and mesh preparation."
+license = "MIT"
+
+[dependencies]
+cgmath = "0.18"

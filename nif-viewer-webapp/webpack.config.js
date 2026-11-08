@@ -21,7 +21,8 @@ module.exports = {
           noErrorOnMissing: true,
         },
         {
-          from: "../shaders",
+          // Staged from the renderer package: manifest.json + WGSL.
+          from: "../scene-renderer/shaders",
           to: "shaders",
         },
       ],

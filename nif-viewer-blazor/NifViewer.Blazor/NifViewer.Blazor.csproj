@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>true</IsPackable>
     <PackageId>NifViewer.Blazor</PackageId>
-    <Version>0.1.0-preview.5</Version>
+    <Version>0.1.0-preview.6</Version>
     <Description>Blazor WebAssembly component and JS interop wrapper for the wgpu-based NIF (Gamebryo/Starfield) model viewer compiled to WebAssembly.</Description>
     <Authors>Hugo Woodiwiss</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -20,6 +20,7 @@
   <ItemGroup>
     <SupportedPlatform Include="browser" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="CHANGELOG.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
@@ -36,15 +37,16 @@
   </PropertyGroup>
 
   <!--
-    The wasm-pack (target=web) output plus the runtime-fetched shaders/ and
-    resources/ trees are linked into wwwroot so they ship as static web
-    assets under _content/NifViewer.Blazor/. Pack="false" avoids duplicating
-    them as plain NuGet content; the static-web-asset targets pack them.
+    The wasm-pack (target=web) output plus the renderer's shader manifest and
+    WGSL files (staged from scene-renderer/shaders) are linked into wwwroot so
+    they ship as static web assets under _content/NifViewer.Blazor/. Pack="false"
+    avoids duplicating them as plain NuGet content; the static-web-asset targets
+    pack them.
   -->
   <ItemGroup>
     <Content Include="$(PkgWebDir)nif_viewer_lib.js" Link="wwwroot\nif_viewer_lib.js" Pack="false" />
     <Content Include="$(PkgWebDir)nif_viewer_lib_bg.wasm" Link="wwwroot\nif_viewer_lib_bg.wasm" Pack="false" />
-    <Content Include="$(RepoRootDir)shaders\**\*.wgsl" Link="wwwroot\shaders\%(RecursiveDir)%(Filename)%(Extension)" Pack="false" />
+    <Content Include="$(RepoRootDir)scene-renderer\shaders\*.wgsl;$(RepoRootDir)scene-renderer\shaders\manifest.json" Link="wwwroot\shaders\%(Filename)%(Extension)" Pack="false" />
   </ItemGroup>
 
   <Target Name="EnsureNifViewerWasmAssets" BeforeTargets="PrepareForBuild" DependsOnTargets="BuildNifViewerWasm">
