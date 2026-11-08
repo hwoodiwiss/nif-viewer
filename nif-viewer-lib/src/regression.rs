@@ -101,11 +101,16 @@ pub fn render_nif_offscreen(
         };
         let shaders =
             scene_viewer::assets::load_shader_dir(&scene_renderer::packaged_shader_dir())?;
+        let materials =
+            scene_viewer::assets::load_shader_dir(&nif_scene::materials::packaged_material_dir())?;
         let mut renderer = Renderer::new(
             &ctx,
             &shaders,
             RendererDesc::new(scene_renderer::wgpu::TextureFormat::Rgba8UnormSrgb),
         )?;
+        for material_type in crate::nif_material_types(&materials)? {
+            renderer.register_material_type(&material_type)?;
+        }
         let converted = nif_scene::nif_to_scene(nif, files)?;
         let bounds = converted
             .scene

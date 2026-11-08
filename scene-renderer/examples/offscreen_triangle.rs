@@ -32,10 +32,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ]),
                 ..MeshData::default()
             }],
-            materials: vec![MaterialDesc {
+            materials: vec![stock::BasicMaterial {
                 use_vertex_colors: true,
-                ..MaterialDesc::default()
-            }],
+                ..Default::default()
+            }
+            .into()],
             instances: vec![InstanceDesc::new(0, 0)],
             images: vec![],
         };

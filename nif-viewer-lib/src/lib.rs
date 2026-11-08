@@ -12,15 +12,34 @@ pub use scene_renderer;
 pub use scene_types;
 pub use scene_viewer;
 
+use scene_renderer::{RendererError, ShaderSet};
+use scene_types::MaterialTypeDesc;
 use scene_viewer::LightSettings;
 #[cfg(not(target_arch = "wasm32"))]
 use scene_viewer::{ViewerEvent, ViewerHandle};
 
+/// Relative location of the staged NIF material package (`manifest.json` +
+/// WGSL from `nif-scene/shaders`) beside the renderer's `shaders/`.
+pub const NIF_MATERIALS_DIR: &str = "materials/nif";
+
+/// Material types the NIF conversion needs, from a loaded NIF material package.
+pub fn nif_material_types(materials: &ShaderSet) -> Result<Vec<MaterialTypeDesc>, RendererError> {
+    let key = nif_scene::materials::BETHESDA_PBR;
+    let source = materials
+        .material_source(key)
+        .ok_or_else(|| RendererError::Shader(format!("NIF material package lacks '{}'", key)))?;
+    Ok(vec![nif_scene::materials::bethesda_pbr_type(source)])
+}
+
 /// Renderer settings shared by the native and web hosts.
-fn viewer_config(light: LightSettings) -> scene_viewer::ViewerConfig {
+fn viewer_config(
+    light: LightSettings,
+    material_types: Vec<MaterialTypeDesc>,
+) -> scene_viewer::ViewerConfig {
     scene_viewer::ViewerConfig {
         render_scale: 2.0,
         light,
+        material_types,
         ..Default::default()
     }
 }
@@ -49,8 +68,10 @@ fn convert_and_queue(
 // ---------------------------------------------------------------------------
 
 /// Run the native viewer. The NIF is the first `.nif` CLI argument or
-/// `NIF_PATH`. Shaders come from `NIF_VIEWER_SHADER_DIR`, `<exe dir>/shaders`,
-/// `./shaders`, or the renderer package in development builds.
+/// `NIF_PATH`. Renderer shaders come from `NIF_VIEWER_SHADER_DIR`,
+/// `<exe dir>/shaders`, `./shaders`, or the renderer package in development
+/// builds; the NIF material package likewise from `NIF_VIEWER_MATERIAL_DIR`,
+/// `<exe dir>/materials/nif`, `./materials/nif`, or `nif-scene/shaders`.
 ///
 /// Debug environment: `NIF_LIGHT_{COLOR,DIR,INTENSITY,AMBIENT}`,
 /// `NIF_CAM_SPEED`, `NIF_CAPTURE=<frame>`. Backspace captures PNG screenshots.
@@ -62,21 +83,32 @@ pub fn run() -> anyhow::Result<()> {
         .context("no shader directory with manifest.json found (set NIF_VIEWER_SHADER_DIR)")?;
     log::info!("loading shaders from {}", shader_dir.display());
     let shaders = scene_viewer::assets::load_shader_dir(&shader_dir)?;
+    let material_dir = scene_viewer::assets::find_asset_dir(
+        Some("NIF_VIEWER_MATERIAL_DIR"),
+        NIF_MATERIALS_DIR,
+        &nif_scene::materials::packaged_material_dir(),
+    )
+    .context("no NIF material directory with manifest.json found (set NIF_VIEWER_MATERIAL_DIR)")?;
+    log::info!("loading NIF materials from {}", material_dir.display());
+    let material_types =
+        nif_material_types(&scene_viewer::assets::load_shader_dir(&material_dir)?)?;
 
     let mut light = LightSettings::default();
     apply_light_env(&mut light);
     let handle = ViewerHandle::new();
 
-    if let Some(nif_path) = nif_path_from_env_or_args() {
-        match nif_scene::disk::load_nif_with_dependencies(std::path::Path::new(&nif_path)) {
+    let nif_path = nif_path_from_env_or_args();
+    if let Some(nif_path) = &nif_path {
+        match nif_scene::disk::load_nif_with_dependencies(std::path::Path::new(nif_path)) {
             Ok((nif_bytes, files)) => {
-                if let Err(e) = convert_and_queue(&handle, &nif_path, &nif_bytes, &files) {
+                if let Err(e) = convert_and_queue(&handle, nif_path, &nif_bytes, &files) {
                     log::error!("failed to load NIF model {}: {:#}", nif_path, e);
                 }
             }
             Err(e) => log::error!("failed to read NIF {}: {:#}", nif_path, e),
         }
     }
+    let model_name = nif_path.unwrap_or_default();
 
     let cam_speed = std::env::var("NIF_CAM_SPEED")
         .ok()
@@ -105,7 +137,7 @@ pub fn run() -> anyhow::Result<()> {
             initial_size: (1920, 1080),
             exit_on_escape: true,
         },
-        viewer_config(light),
+        viewer_config(light, material_types),
         shaders,
         handle,
     )
@@ -117,13 +149,14 @@ pub fn run() -> anyhow::Result<()> {
         for event in handle.drain_events() {
             match event {
                 ViewerEvent::SceneUploaded { ticket, report } => {
+                    log::info!("loaded NIF model: {}", model_name);
                     log::info!("scene {} uploaded: {:?}", ticket, report.stats);
                     if let Some(speed) = cam_speed {
                         handle.set_camera_speed(speed);
                     }
                 }
-                ViewerEvent::SceneFailed { ticket, error } => {
-                    log::error!("scene {} failed: {}", ticket, error)
+                ViewerEvent::SceneFailed { error, .. } => {
+                    log::error!("failed to load NIF model {}: {}", model_name, error)
                 }
                 ViewerEvent::CaptureReady(image) => {
                     let _ = png_tx.send(image);

@@ -15,11 +15,18 @@
 //!
 //! Per-view uniform writes use `Queue::write_buffer`, which takes effect at
 //! the next submission: submit after each `encode` of the same view.
+//!
+//! Materials: the renderer owns the frame (passes, camera/light uniforms,
+//! vertex layout, output encoding) and a WGSL prelude defining that ABI.
+//! Material types supply their own shaders and bindings through
+//! [`Renderer::register_material_type`]; the stock `basic` type
+//! ([`stock::BasicMaterial`]) is registered from the renderer's shader set.
 
 mod capture;
 mod context;
 mod renderer;
 mod shaders;
+pub mod stock;
 
 pub use capture::{CapturedImage, PendingCapture};
 pub use context::{default_backends, Capabilities, ContextDesc, GpuContext};

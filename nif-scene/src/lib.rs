@@ -7,11 +7,13 @@
 //!   resource path helpers.
 //! * [`nif_scene`] — NIF materials/textures → [`scene_types::SceneData`].
 //! * [`textures`] — DDS decoding and ORM packing into plain RGBA8 pixels.
+//! * [`materials`] — the `bethesda-pbr` material type (WGSL in `shaders/`).
 //! * `disk` (native only) — resolve dependencies from an extracted data folder.
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 pub mod load_session;
+pub mod materials;
 pub mod nif;
 pub mod nif_model;
 pub mod nif_scene;

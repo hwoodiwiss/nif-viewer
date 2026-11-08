@@ -8,9 +8,9 @@ plus the NIF-specific application layer:
 | Crate | Owns |
 |---|---|
 | `scene-types` | Renderer-neutral CPU scene descriptors (`SceneData`, `MeshData`, `ImageData`, `MaterialDesc`, `InstanceDesc`), camera/light values, validation, normal/tangent preparation. No GPU, windowing or I/O. |
-| `scene-renderer` | `GpuContext`, `Renderer` (typed generational `SceneId` handles, transactional uploads), `RenderView`, frame encoding into caller-owned encoders, exact-frame capture/readback, DDS/ORM CPU utilities and the default WGSL shader set + `manifest.json` (`scene-renderer/shaders`). No window, files or URLs. |
+| `scene-renderer` | `GpuContext`, `Renderer` (typed generational `SceneId` handles, transactional uploads, material types registered by key with per-type pipelines, draws batched by material), `RenderView`, frame encoding into caller-owned encoders, exact-frame capture/readback, and its shader package (`scene-renderer/shaders`: prelude defining the material ABI, compose pass, stock `basic` diffuse/normal material). No window, files or URLs. |
 | `scene-viewer` | Optional host layer: `SurfacePresenter`, `Viewer`, `ViewerHandle` command/status queue, keyboard navigation, shader loading from a directory or base URL, and a winit `ViewerApp` runner. |
-| `nif-scene` | NIF/`.mesh`/`.mat` parsing (`nif`), staged dependency sessions (`load_session`), DDS decoding and ORM packing (`textures`), NIF → `SceneData` conversion (`nif_scene::nif_to_scene`) and native data-folder resolution (`disk`). No GPU, window or browser code. |
+| `nif-scene` | NIF/`.mesh`/`.mat` parsing (`nif`), staged dependency sessions (`load_session`), DDS decoding and ORM packing (`textures`), the `bethesda-pbr` material type (`materials`, WGSL in `nif-scene/shaders`), NIF → `SceneData` conversion (`nif_scene::nif_to_scene`) and native data-folder resolution (`disk`). No GPU, window or browser code. |
 | `nif-viewer-lib` | Entry points only: native `run()` and the wasm-bindgen exports, orchestrating `nif-scene` and `scene-viewer`. Re-exports `nif` for compatibility. |
 | `nif-viewer-app` | Native executable (initialises logging, calls `nif_viewer_lib::run`). |
 
@@ -20,6 +20,26 @@ The renderer accepts only decoded in-memory images (`ImageData`: RGBA8 plus
 colour space); game texture formats such as DDS are decoded in `nif-scene`.
 See `scene-renderer/src/lib.rs` for the frame/capture contract and
 `scene-types/src/lib.rs` for coordinate, matrix, UV, tangent and colour conventions.
+
+### Materials
+
+The renderer owns the frame: passes, camera and light uniforms, vertex and
+instance layout, and output encoding. Its WGSL prelude
+(`scene-renderer/shaders/prelude.wgsl`, shader ABI 2) defines that contract
+and helpers such as `standard_vertex`, `tone_map` and `decode_normal`.
+Material types own their shading: a `MaterialTypeDesc` declares a key, WGSL
+source and bindings (texture slots with colour space and fallback texel, plus
+an optional uniform block), and is registered with
+`Renderer::register_material_type`. Materials refer to their type by string
+key, so scenes stay serialisable and the renderer batches draws by type.
+
+- `basic` (stock, `scene_renderer::stock::BasicMaterial`): diffuse + normal
+  map, Lambert lighting.
+- `bethesda-pbr` (`nif_scene::materials`): Cook-Torrance GGX with packed ORM,
+  used for all NIF materials.
+
+Shader and material packages share one manifest format: `files` for renderer
+stages, `materials` for type key → WGSL file.
 
 Minimal offscreen consumer (no window or NIF code):
 `cargo run -p scene-renderer --example offscreen_triangle`.
@@ -56,7 +76,8 @@ Native environment variables:
 | Variable | Effect |
 |---|---|
 | `NIF_PATH` | NIF file to load at startup (CLI arg takes precedence) |
-| `NIF_VIEWER_SHADER_DIR` | Directory containing the shader `manifest.json`. Otherwise `<exe dir>/shaders`, `./shaders`, then (development builds) `scene-renderer/shaders` are searched |
+| `NIF_VIEWER_SHADER_DIR` | Directory containing the renderer's shader `manifest.json`. Otherwise `<exe dir>/shaders`, `./shaders`, then (development builds) `scene-renderer/shaders` are searched |
+| `NIF_VIEWER_MATERIAL_DIR` | Directory containing the NIF material package's `manifest.json`. Otherwise `<exe dir>/materials/nif`, `./materials/nif`, then (development builds) `nif-scene/shaders` are searched |
 | `NIF_CAPTURE=<frame#>` | Automatically capture that frame number to `screenshot_NNNN_frame_{scene,output}.png` in the working directory (linear scene colour converted to sRGB, and the presented output when the surface allows copies) — useful for headless/scripted rendering checks |
 | `NIF_CAM_SPEED=<f32>` | Camera navigation speed; overrides the automatic scale-aware default (`bounding radius / 50`) applied when a model loads |
 | `NIF_LIGHT_COLOR="r,g,b"` | Directional light colour as 0-1 floats (e.g. `"1,0.2,0.2"`) |
@@ -71,7 +92,7 @@ double the camera speed at runtime (the new value is logged).
 ### Rendering
 
 Materials use Bethesda-style roughness/metalness PBR (Cook-Torrance GGX),
-the `nif-pbr-compat` profile of shader ABI 1.
+the `bethesda-pbr` material type from `nif-scene`.
 Alongside `_color` and `_normal`, the `_rough`, `_metal` and `_ao` greyscale
 maps are resolved from `.mat` files (or heuristically) and packed CPU-side
 into a single linear ORM texture (R=AO, G=roughness, B=metalness); missing
@@ -143,7 +164,7 @@ wasm-pack build --release
 
 This produces `nif-viewer-lib/pkg`, an ES module exporting:
 
-- `attach(canvasId: string, shaderBaseUrl?: string): Promise<void>` — attach the renderer to an existing `<canvas>` element by id. Fetches `manifest.json` and the WGSL files from `shaderBaseUrl` (default `"shaders/"`, relative to the page) and resolves once the viewer is ready; rejects with the initialisation error (e.g. no WebGPU adapter, missing or ABI-mismatched shaders). Calling it again re-homes the live canvas.
+- `attach(canvasId: string, shaderBaseUrl?: string, materialBaseUrl?: string): Promise<void>` — attach the renderer to an existing `<canvas>` element by id. Fetches the renderer's `manifest.json` and WGSL from `shaderBaseUrl` (default `"shaders/"`) and the NIF material package from `materialBaseUrl` (default `"materials/nif/"`), both relative to the page, and resolves once the viewer is ready; rejects with the initialisation error (e.g. no WebGPU adapter, missing or ABI-mismatched shaders). Calling it again re-homes the live canvas.
 - `run_wasm()` — legacy entry point that creates and appends its own canvas.
 - `viewer_status(): object` — `{ state, error, load: { ticket, name, state, error, diagnostics } }`. Viewer `state`: `initializing` / `ready` / `suspended` / `device-lost` / `failed` / `disposed`. Load `state`: `queued` / `uploaded` / `rendered` (first frame submitted) / `failed` / `superseded`.
 - `set_camera_speed(speed: number)` — set the navigation speed (applied on the next frame; loading a model resets it to a scale-aware default of `bounding radius / 50`).
@@ -151,9 +172,10 @@ This produces `nif-viewer-lib/pkg`, an ES module exporting:
 - `parse_nif_structure(nifBytes: Uint8Array): object` — parse the raw block structure (header, block list with per-block fields and child refs, string table) without rendering; useful for introspection UIs.
 
 Commands issued before `attach` resolves are queued and applied once the
-viewer is ready. Serve the contents of `scene-renderer/shaders` (including
-`manifest.json`) at the shader base URL; the webapp's webpack config copies
-them to `dist/shaders`.
+viewer is ready. Serve the contents of `scene-renderer/shaders` at the shader
+base URL and `nif-scene/shaders` at the material base URL (each includes its
+`manifest.json`); the webapp's webpack config copies them to `dist/shaders`
+and `dist/materials/nif`.
 
 ### Recommended: streaming session API
 
@@ -180,7 +202,11 @@ The loop: `begin` → stream each `pending()` file (`file_begin` → `file_chunk
 import init, { attach, load_nif } from "./pkg/nif_viewer_lib.js";
 export async function start(canvasId) {
   await init();
-  await attach(canvasId, new URL("./shaders/", import.meta.url).href);
+  await attach(
+    canvasId,
+    new URL("./shaders/", import.meta.url).href,
+    new URL("./materials/nif/", import.meta.url).href,
+  );
 }
 export function load(name, bytes, files) { load_nif(name, bytes, files); }
 ```

@@ -5,7 +5,7 @@ use scene_renderer::{
     CaptureSource, ContextDesc, GpuContext, RenderView, Renderer, RendererDesc, RendererError,
     SceneId, ShaderSet, ViewDesc,
 };
-use scene_types::{Camera, ViewParams};
+use scene_types::{Camera, MaterialTypeDesc, ViewParams};
 use winit::event::WindowEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
@@ -26,6 +26,9 @@ pub struct ViewerConfig {
     pub light: LightSettings,
     /// Key that requests a capture of the next frame.
     pub capture_key: Option<KeyCode>,
+    /// Material types registered after the renderer's stock types, e.g. a
+    /// host's own shaders loaded with [`crate::assets`].
+    pub material_types: Vec<MaterialTypeDesc>,
 }
 
 impl Default for ViewerConfig {
@@ -38,6 +41,7 @@ impl Default for ViewerConfig {
             camera_speed: 0.2,
             light: LightSettings::default(),
             capture_key: Some(KeyCode::Backspace),
+            material_types: Vec::new(),
         }
     }
 }
@@ -85,7 +89,10 @@ impl Viewer {
             });
         }
         let presenter = SurfacePresenter::new(&ctx, surface, size.width, size.height)?;
-        let renderer = Renderer::new(&ctx, shaders, RendererDesc::new(presenter.format()))?;
+        let mut renderer = Renderer::new(&ctx, shaders, RendererDesc::new(presenter.format()))?;
+        for material_type in &config.material_types {
+            renderer.register_material_type(material_type)?;
+        }
         let view = renderer.create_view(ViewDesc {
             width: size.width,
             height: size.height,

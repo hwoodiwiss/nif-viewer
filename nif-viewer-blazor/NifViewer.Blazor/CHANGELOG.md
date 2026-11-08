@@ -1,5 +1,49 @@
 # NifViewer.Blazor changelog
 
+## 0.1.0-preview.9
+
+No C# API changes. Rendering output is unchanged (same regression baselines).
+
+### Material system
+
+The core renderer no longer contains NIF shading. It owns the frame
+(passes, camera/light uniforms, vertex layout, output encoding) and a WGSL
+prelude; material types supply their own shaders and bindings and are
+registered by key. NIF materials use the `bethesda-pbr` type shipped by
+`nif-scene`. The renderer also ships a stock `basic` diffuse/normal type.
+
+### WASM exports
+
+| Export | Kind | Details |
+|---|---|---|
+| `attach(canvasId, shaderBaseUrl?, materialBaseUrl?)` | Added parameter | `materialBaseUrl` locates the NIF material package (default `"materials/nif/"`, page-relative). Existing calls are unaffected. |
+
+### Static web assets
+
+| Asset | Kind |
+|---|---|
+| `shaders/manifest.json` | Changed — shader ABI 2; lists `prelude`, `compose` and stock material `basic`. |
+| `shaders/prelude.wgsl`, `shaders/basic.wgsl` | Added |
+| `shaders/geometry.wgsl` | **Removed** — moved to `materials/nif/bethesda_pbr.wgsl`. |
+| `materials/nif/manifest.json`, `materials/nif/bethesda_pbr.wgsl` | Added — NIF material package. |
+
+Hosts serving the WASM module themselves (not through this package) must
+serve both directories; `attach` rejects with the missing URL otherwise.
+
+## 0.1.0-preview.8
+
+No public C#, JavaScript or WASM API changes since preview.6; rebuilt WASM.
+
+- NIF parsing, dependency sessions and NIF → scene conversion moved from
+  `nif-viewer-lib` into a separate `nif-scene` crate. DDS decoding moved out of
+  the renderer into `nif-scene`; the renderer only accepts decoded RGBA8 images.
+- Restored the browser console messages `loaded NIF model: <name>` (on
+  successful upload) and `failed to load NIF model <name>: <error>`, which
+  preview.6 and the local-only preview.7 build stopped emitting. Hosts that
+  watch the console for load completion (such as EsmParser's browser smoke
+  test) work again; `GetStatusAsync` remains the structured alternative.
+- Rendering output is unchanged (same regression baselines).
+
 ## 0.1.0-preview.6
 
 The renderer was extracted into reusable `scene-types`, `scene-renderer` and

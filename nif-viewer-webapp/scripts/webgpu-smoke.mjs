@@ -39,7 +39,11 @@ let failed = false;
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 800, height: 600 });
-  page.on("console", (m) => console.log(`[page] ${m.text()}`));
+  const consoleLines = [];
+  page.on("console", (m) => {
+    consoleLines.push(m.text());
+    console.log(`[page] ${m.text()}`);
+  });
   await page.goto(base, { waitUntil: "load" });
 
   const status = await page.evaluate(async () => {
@@ -100,6 +104,10 @@ try {
   });
   console.log("status:", JSON.stringify(status));
   if (status?.load?.state !== "rendered") throw new Error("model did not reach the rendered milestone");
+  // Hosts such as EsmParser's browser smoke test wait for this console message.
+  if (!consoleLines.some((l) => l.includes("loaded NIF model: quad.nif"))) {
+    throw new Error("missing 'loaded NIF model: quad.nif' console message");
+  }
 
   await new Promise((r) => setTimeout(r, 500));
   const canvas = await page.$("#nif-canvas");

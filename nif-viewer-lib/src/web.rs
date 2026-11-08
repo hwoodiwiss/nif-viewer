@@ -46,11 +46,15 @@ fn init_wasm_logging() {
 fn record_events(handle: &ViewerHandle) {
     for event in handle.drain_events() {
         match event {
+            // Hosts (e.g. EsmParser's browser smoke test) watch for these console
+            // messages, which predate viewer_status(); keep their wording.
             ViewerEvent::SceneUploaded { ticket, report } => update_status(ticket, |s| {
+                log::info!("loaded NIF model: {}", s.name);
                 s.state = "uploaded";
                 s.diagnostics.extend(report.diagnostics);
             }),
             ViewerEvent::SceneFailed { ticket, error } => update_status(ticket, |s| {
+                log::error!("failed to load NIF model {}: {}", s.name, error);
                 s.state = "failed";
                 s.error = Some(error);
             }),
@@ -149,20 +153,32 @@ fn trigger_browser_download(data: &[u8], filename: &str) -> Result<(), JsValue> 
     Ok(())
 }
 
+fn with_trailing_slash(url: Option<String>, default: &str) -> String {
+    let url = url.unwrap_or_else(|| default.to_string());
+    if url.ends_with('/') {
+        url
+    } else {
+        format!("{}/", url)
+    }
+}
+
 async fn start(
     canvas: web_sys::HtmlCanvasElement,
     shader_base_url: Option<String>,
+    material_base_url: Option<String>,
 ) -> Result<(), JsValue> {
-    let base = shader_base_url.unwrap_or_else(|| "shaders/".to_string());
-    let base = if base.ends_with('/') {
-        base
-    } else {
-        format!("{}/", base)
-    };
+    let to_js = |e: scene_renderer::RendererError| JsValue::from_str(&e.to_string());
+    let shader_base = with_trailing_slash(shader_base_url, "shaders/");
+    let material_base =
+        with_trailing_slash(material_base_url, &format!("{}/", crate::NIF_MATERIALS_DIR));
     let handle = handle();
-    let shaders = scene_viewer::assets::fetch_shader_set(&base)
+    let shaders = scene_viewer::assets::fetch_shader_set(&shader_base)
         .await
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        .map_err(to_js)?;
+    let materials = scene_viewer::assets::fetch_shader_set(&material_base)
+        .await
+        .map_err(to_js)?;
+    let material_types = crate::nif_material_types(&materials).map_err(to_js)?;
     let app = ViewerApp::new(
         AppConfig {
             title: "NIF Viewer".into(),
@@ -171,7 +187,7 @@ async fn start(
             canvas: Some(canvas),
             resized_canvas_style: Some("width: 100%; aspect-ratio: auto;".into()),
         },
-        crate::viewer_config(LightSettings::default()),
+        crate::viewer_config(LightSettings::default(), material_types),
         shaders,
         handle.clone(),
     )
@@ -199,7 +215,7 @@ pub fn run_wasm() -> Result<(), JsValue> {
         .append_child(&canvas)?;
     LIVE_CANVAS.with(|c| *c.borrow_mut() = Some(canvas.clone()));
     wasm_bindgen_futures::spawn_local(async move {
-        if let Err(e) = start(canvas, None).await {
+        if let Err(e) = start(canvas, None, None).await {
             log::error!("viewer start failed: {:?}", e);
         }
     });
@@ -209,12 +225,17 @@ pub fn run_wasm() -> Result<(), JsValue> {
 /// Attach the viewer to the `<canvas>` with the given id. Resolves once the
 /// GPU device, shaders and pipelines are ready, or rejects with the failure.
 ///
-/// `shader_base_url` locates `manifest.json` and the WGSL files (default
-/// `"shaders/"`, relative to the page). Safe to call again after DOM
-/// re-renders (SPA/Blazor navigation): the live canvas is swapped into the
-/// new element's place.
+/// `shader_base_url` locates the renderer's `manifest.json` and WGSL files
+/// (default `"shaders/"`) and `material_base_url` the NIF material package
+/// (default `"materials/nif/"`), both relative to the page. Safe to call again
+/// after DOM re-renders (SPA/Blazor navigation): the live canvas is swapped
+/// into the new element's place.
 #[wasm_bindgen]
-pub async fn attach(canvas_id: String, shader_base_url: Option<String>) -> Result<(), JsValue> {
+pub async fn attach(
+    canvas_id: String,
+    shader_base_url: Option<String>,
+    material_base_url: Option<String>,
+) -> Result<(), JsValue> {
     use wasm_bindgen::JsCast;
 
     init_wasm_logging();
@@ -260,7 +281,7 @@ pub async fn attach(canvas_id: String, shader_base_url: Option<String>) -> Resul
     canvas.set_width(width);
     canvas.set_height(height);
     LIVE_CANVAS.with(|cell| *cell.borrow_mut() = Some(canvas.clone()));
-    start(canvas, shader_base_url).await
+    start(canvas, shader_base_url, material_base_url).await
 }
 
 /// Viewer lifecycle and latest load status as a JS object:

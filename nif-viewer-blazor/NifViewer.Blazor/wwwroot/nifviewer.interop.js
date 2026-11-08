@@ -5,10 +5,12 @@ import initWasm, * as wasm from "./nif_viewer_lib.js";
 
 let initialized = false;
 
-// Renderer shaders (manifest.json + WGSL) ship beside this module as static
-// web assets under _content/NifViewer.Blazor/shaders/. They are located from
-// this module's URL, so no global fetch redirection is needed.
+// Renderer shaders and the NIF material package ship beside this module as
+// static web assets under _content/NifViewer.Blazor/{shaders,materials/nif}/.
+// They are located from this module's URL, so no global fetch redirection is
+// needed.
 const shaderBaseUrl = new URL("./shaders/", import.meta.url).href;
+const materialBaseUrl = new URL("./materials/nif/", import.meta.url).href;
 
 export async function init() {
   if (!initialized) {
@@ -21,7 +23,7 @@ export async function init() {
 // with the initialisation error otherwise.
 export async function attach(canvasId) {
   await init();
-  await wasm.attach(canvasId, shaderBaseUrl);
+  await wasm.attach(canvasId, shaderBaseUrl, materialBaseUrl);
 }
 
 // { state, error, load: { ticket, name, state, error, diagnostics } }

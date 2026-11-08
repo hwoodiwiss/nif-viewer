@@ -1,8 +1,10 @@
 //! NIF → [`SceneData`] adapter: resolves NIF material/texture semantics and
-//! produces renderer-neutral scene data plus load diagnostics.
+//! produces renderer-neutral scene data plus load diagnostics. Materials use
+//! the [`materials::BETHESDA_PBR`] type, which hosts must register.
 
 use std::collections::HashMap;
 
+use crate::materials;
 use crate::textures::{decode_dds_rgba8, pack_orm, Rgba8Image};
 use scene_types::{
     AlphaMode, ColorSpace, ImageData, InstanceDesc, MaterialDesc, SceneData, TextureRef,
@@ -184,23 +186,19 @@ impl Builder<'_> {
                 .clone()
                 .or_else(|| info.diffuse.clone())
                 .unwrap_or_else(|| "NIF Material".to_string()),
-            base_color_texture,
-            normal_texture,
-            orm_texture,
+            material_type: materials::BETHESDA_PBR.to_string(),
+            textures: vec![base_color_texture, normal_texture, orm_texture],
+            uniforms: materials::uniforms([1.0; 4], false),
             alpha_mode,
             // NIF two-sidedness flags are not yet interpreted; draw both faces.
             double_sided: true,
-            ..MaterialDesc::default()
         }
     }
 }
 
 /// Second half of [`nif_to_scene`]: resolve materials and textures from
 /// `files` and assemble the scene.
-pub fn scene_from_built(
-    built: BuiltModel,
-    files: &HashMap<String, Vec<u8>>,
-) -> NifSceneData {
+pub fn scene_from_built(built: BuiltModel, files: &HashMap<String, Vec<u8>>) -> NifSceneData {
     let missing_mats = built
         .materials
         .iter()

@@ -8,20 +8,24 @@ a JavaScript web host, and a Blazor NuGet wrapper. See `README.md` for usage and
 changing the library, its tests, or the Blazor package.
 
 - `scene-types`: renderer-neutral CPU scene descriptors, validation, mesh preparation.
-- `scene-renderer`: wgpu renderer, GPU resources/handles, capture, default WGSL shaders
-  and `manifest.json` (`scene-renderer/shaders`, shader ABI version in `src/shaders.rs`).
+- `scene-renderer`: wgpu renderer, GPU resources/handles, material-type registration and
+  batching, capture, and its shader package (`scene-renderer/shaders`: prelude/material ABI,
+  compose, stock `basic` material; ABI version in `src/shaders.rs`).
 - `scene-viewer`: optional window/canvas host, navigation, `ViewerHandle` commands/status.
-- `nif-scene`: NIF parsing, dependency sessions, NIF → scene conversion, native data-folder
-  resolution. See its scoped `AGENTS.md` and `tests/AGENTS.md`.
+- `nif-scene`: NIF parsing, dependency sessions, NIF → scene conversion, the `bethesda-pbr`
+  material type (`nif-scene/shaders`), native data-folder resolution. See its scoped
+  `AGENTS.md` and `tests/AGENTS.md`.
 - `nif-viewer-lib`: entry points only (native `run`, WASM exports) orchestrating the crates above.
 - `nif-viewer-app`: native application host.
 - `nif-viewer-webapp`: JavaScript/web bundler host.
 - `nif-viewer-blazor/NifViewer.Blazor`: C#/Razor wrapper and packaged static web assets.
 
 Keep NIF/game knowledge out of `scene-*` crates, GPU/window/browser code out of
-`nif-scene`, and parsing/conversion logic out of `nif-viewer-lib`.
-Changing shader bindings, vertex layouts or entry points requires bumping
-`SHADER_ABI_VERSION` and `manifest.json` together. Record NuGet-visible API changes
+`nif-scene`, and parsing/conversion logic out of `nif-viewer-lib`. Shading belongs to
+material types, not the core renderer: add new looks as registered material types.
+Changing the prelude's bind groups, vertex/instance layout, entry points or the material
+binding convention requires bumping `SHADER_ABI_VERSION` and every `manifest.json`
+together. Record NuGet-visible API changes
 in `nif-viewer-blazor/NifViewer.Blazor/CHANGELOG.md`.
 
 ## Working rules

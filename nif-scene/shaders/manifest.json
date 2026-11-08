@@ -1,0 +1,6 @@
+{
+  "abi_version": 2,
+  "materials": {
+    "bethesda-pbr": "bethesda_pbr.wgsl"
+  }
+}

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{normal_matrix, AlphaMode, SceneData, TextureRef};
+use crate::{normal_matrix, AlphaMode, MaterialTypeDesc, SceneData};
 
 /// A scene that cannot be uploaded as described.
 #[derive(Debug, Clone, PartialEq)]
@@ -48,7 +48,20 @@ pub enum SceneError {
     },
     ColorSpace {
         material: usize,
-        slot: &'static str,
+        slot: String,
+        expected: crate::ColorSpace,
+    },
+    UnknownMaterialType {
+        material: usize,
+        key: String,
+    },
+    MaterialBinding {
+        material: usize,
+        detail: String,
+    },
+    MaterialType {
+        key: String,
+        detail: String,
     },
 }
 
@@ -112,8 +125,27 @@ impl fmt::Display for SceneError {
                     material, cutoff
                 )
             }
-            SceneError::ColorSpace { material, slot } => {
-                write!(f, "material {} {} texture must be linear", material, slot)
+            SceneError::ColorSpace {
+                material,
+                slot,
+                expected,
+            } => write!(
+                f,
+                "material {} '{}' texture must use colour space {:?}",
+                material, slot, expected
+            ),
+            SceneError::UnknownMaterialType { material, key } => {
+                write!(
+                    f,
+                    "material {} uses unregistered material type '{}'",
+                    material, key
+                )
+            }
+            SceneError::MaterialBinding { material, detail } => {
+                write!(f, "material {}: {}", material, detail)
+            }
+            SceneError::MaterialType { key, detail } => {
+                write!(f, "material type '{}': {}", key, detail)
             }
         }
     }
@@ -191,30 +223,17 @@ impl SceneData {
         }
 
         let images = self.images.len();
-        let check_tex = |m: usize, slot: &'static str, t: &Option<TextureRef>, linear: bool| {
-            if let Some(t) = t {
-                let image =
-                    self.images
-                        .get(t.image)
-                        .ok_or_else(|| SceneError::MissingReference {
-                            what: format!("material {} {} texture", m, slot),
+        for (m, material) in self.materials.iter().enumerate() {
+            for (slot, t) in material.textures.iter().enumerate() {
+                if let Some(t) = t {
+                    if t.image >= images {
+                        return Err(SceneError::MissingReference {
+                            what: format!("material {} texture slot {}", m, slot),
                             index: t.image,
                             len: images,
-                        })?;
-                if linear && image.color_space != crate::ColorSpace::Linear {
-                    return Err(SceneError::ColorSpace { material: m, slot });
+                        });
+                    }
                 }
-            }
-            Ok(())
-        };
-        for (m, material) in self.materials.iter().enumerate() {
-            check_tex(m, "base colour", &material.base_color_texture, false)?;
-            check_tex(m, "normal", &material.normal_texture, true)?;
-            check_tex(m, "orm", &material.orm_texture, true)?;
-            if !material.base_color_factor.iter().all(|c| c.is_finite()) {
-                return Err(SceneError::NonFinite {
-                    what: format!("material {} base colour factor", m),
-                });
             }
             if let AlphaMode::Mask { cutoff } = material.alpha_mode {
                 if !(0.0..=1.0).contains(&cutoff) {
@@ -249,6 +268,86 @@ impl SceneData {
             if normal_matrix(&instance.transform).is_none() {
                 return Err(SceneError::SingularTransform { instance: i });
             }
+        }
+        Ok(())
+    }
+
+    /// Check every material against its registered type: the type exists,
+    /// texture slots and uniform size match, and bound images use the slot's
+    /// colour space. `lookup` resolves a type key.
+    pub fn validate_materials<'a>(
+        &self,
+        lookup: impl Fn(&str) -> Option<&'a MaterialTypeDesc>,
+    ) -> Result<(), SceneError> {
+        for (m, material) in self.materials.iter().enumerate() {
+            let ty =
+                lookup(&material.material_type).ok_or_else(|| SceneError::UnknownMaterialType {
+                    material: m,
+                    key: material.material_type.clone(),
+                })?;
+            if material.textures.len() > ty.textures.len() {
+                return Err(SceneError::MaterialBinding {
+                    material: m,
+                    detail: format!(
+                        "{} texture slots supplied, type '{}' declares {}",
+                        material.textures.len(),
+                        ty.key,
+                        ty.textures.len()
+                    ),
+                });
+            }
+            if !material.uniforms.is_empty() && material.uniforms.len() != ty.uniform_size {
+                return Err(SceneError::MaterialBinding {
+                    material: m,
+                    detail: format!(
+                        "{} uniform bytes supplied, type '{}' declares {}",
+                        material.uniforms.len(),
+                        ty.key,
+                        ty.uniform_size
+                    ),
+                });
+            }
+            for (slot, t) in material.textures.iter().enumerate() {
+                let (Some(t), Some(decl)) = (t, ty.textures.get(slot)) else {
+                    continue;
+                };
+                if let Some(image) = self.images.get(t.image) {
+                    if image.color_space != decl.color_space {
+                        return Err(SceneError::ColorSpace {
+                            material: m,
+                            slot: decl.name.clone(),
+                            expected: decl.color_space,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl MaterialTypeDesc {
+    /// Check the declaration itself: key, uniform size and default bytes.
+    pub fn validate(&self) -> Result<(), SceneError> {
+        let bad = |detail: String| SceneError::MaterialType {
+            key: self.key.clone(),
+            detail,
+        };
+        if self.key.is_empty() {
+            return Err(bad("empty key".into()));
+        }
+        if !self.uniform_size.is_multiple_of(16) {
+            return Err(bad(format!(
+                "uniform size {} is not a multiple of 16",
+                self.uniform_size
+            )));
+        }
+        if self.default_uniforms.len() != self.uniform_size {
+            return Err(bad(format!(
+                "default uniforms are {} bytes, expected {}",
+                self.default_uniforms.len(),
+                self.uniform_size
+            )));
         }
         Ok(())
     }
@@ -311,7 +410,7 @@ mod tests {
             Err(SceneError::MissingReference { .. })
         ));
         let mut s = triangle_scene();
-        s.materials[0].base_color_texture = Some(TextureRef::new(0));
+        s.materials[0].textures = vec![Some(TextureRef::new(0))];
         assert!(matches!(
             s.validate(),
             Err(SceneError::MissingReference { .. })
@@ -324,8 +423,29 @@ mod tests {
         ));
     }
 
+    fn two_slot_type() -> MaterialTypeDesc {
+        MaterialTypeDesc {
+            key: "test".into(),
+            source: String::new(),
+            textures: vec![
+                TextureSlot {
+                    name: "colour".into(),
+                    color_space: ColorSpace::Srgb,
+                    fallback: [255; 4],
+                },
+                TextureSlot {
+                    name: "normal".into(),
+                    color_space: ColorSpace::Linear,
+                    fallback: [128, 128, 255, 255],
+                },
+            ],
+            uniform_size: 16,
+            default_uniforms: vec![0; 16],
+        }
+    }
+
     #[test]
-    fn rejects_bad_images_and_srgb_data_textures() {
+    fn rejects_bad_images() {
         let mut s = triangle_scene();
         s.images
             .push(ImageData::rgba8("x", 2, 2, ColorSpace::Srgb, vec![0; 15]));
@@ -333,12 +453,50 @@ mod tests {
             s.validate(),
             Err(SceneError::ImageSize { expected: 16, .. })
         ));
-        s.images[0].pixels.push(0);
-        s.materials[0].normal_texture = Some(TextureRef::new(0));
+    }
+
+    #[test]
+    fn materials_are_checked_against_their_type() {
+        let ty = two_slot_type();
+        let lookup = |k: &str| (k == "test").then_some(&ty);
+        let mut s = triangle_scene();
+        s.images
+            .push(ImageData::rgba8("x", 1, 1, ColorSpace::Srgb, vec![0; 4]));
+        s.materials[0].material_type = "test".into();
+        s.validate_materials(lookup).unwrap();
+
+        s.materials[0].textures = vec![None, Some(TextureRef::new(0))];
         assert!(matches!(
-            s.validate(),
-            Err(SceneError::ColorSpace { slot: "normal", .. })
+            s.validate_materials(lookup),
+            Err(SceneError::ColorSpace { ref slot, .. }) if slot == "normal"
         ));
+        s.materials[0].textures = vec![None; 3];
+        assert!(matches!(
+            s.validate_materials(lookup),
+            Err(SceneError::MaterialBinding { .. })
+        ));
+        s.materials[0].textures.clear();
+        s.materials[0].uniforms = vec![0; 8];
+        assert!(matches!(
+            s.validate_materials(lookup),
+            Err(SceneError::MaterialBinding { .. })
+        ));
+        s.materials[0].material_type = "missing".into();
+        assert!(matches!(
+            s.validate_materials(lookup),
+            Err(SceneError::UnknownMaterialType { .. })
+        ));
+    }
+
+    #[test]
+    fn material_type_declarations_are_checked() {
+        let mut ty = two_slot_type();
+        ty.validate().unwrap();
+        ty.uniform_size = 12;
+        assert!(ty.validate().is_err());
+        ty.uniform_size = 16;
+        ty.default_uniforms.pop();
+        assert!(ty.validate().is_err());
     }
 
     #[test]

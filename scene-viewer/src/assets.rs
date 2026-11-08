@@ -14,10 +14,22 @@ pub fn load_shader_dir(dir: &std::path::Path) -> Result<ShaderSet, RendererError
     })
 }
 
-/// Locate shaders: `env_var` (when set), `<exe dir>/shaders`, `./shaders`,
-/// then the renderer package's own `shaders` directory (development builds).
+/// Locate the renderer's shaders: `env_var` (when set), `<exe dir>/shaders`,
+/// `./shaders`, then the renderer package's own `shaders` directory
+/// (development builds).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn find_shader_dir(env_var: Option<&str>) -> Option<std::path::PathBuf> {
+    find_asset_dir(env_var, "shaders", &scene_renderer::packaged_shader_dir())
+}
+
+/// Locate a staged asset directory containing `manifest.json`: `env_var`
+/// (when set), `<exe dir>/<staged>`, `./<staged>`, then `packaged`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn find_asset_dir(
+    env_var: Option<&str>,
+    staged: &str,
+    packaged: &std::path::Path,
+) -> Option<std::path::PathBuf> {
     let mut candidates = Vec::new();
     if let Some(dir) = env_var.and_then(std::env::var_os) {
         candidates.push(std::path::PathBuf::from(dir));
@@ -26,10 +38,10 @@ pub fn find_shader_dir(env_var: Option<&str>) -> Option<std::path::PathBuf> {
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
     {
-        candidates.push(exe_dir.join("shaders"));
+        candidates.push(exe_dir.join(staged));
     }
-    candidates.push(std::path::PathBuf::from("shaders"));
-    candidates.push(scene_renderer::packaged_shader_dir());
+    candidates.push(std::path::PathBuf::from(staged));
+    candidates.push(packaged.to_path_buf());
     candidates
         .into_iter()
         .find(|d| d.join(MANIFEST_FILE).is_file())
@@ -64,13 +76,13 @@ pub async fn fetch_shader_set(base_url: &str) -> Result<ShaderSet, RendererError
         .await
         .map_err(|e| RendererError::Shader(format!("{}: {}", join(MANIFEST_FILE), e)))?;
     let parsed = scene_renderer::ShaderManifest::parse(&manifest)?;
-    let mut sources = std::collections::HashMap::new();
-    for (stage, file) in &parsed.files {
+    let mut files = std::collections::HashMap::new();
+    for file in parsed.all_files() {
         let url = join(file);
         let text = fetch_text(&url)
             .await
             .map_err(|e| RendererError::Shader(format!("{}: {}", url, e)))?;
-        sources.insert(stage.clone(), text);
+        files.insert(file.clone(), text);
     }
-    ShaderSet::new(&parsed, sources)
+    ShaderSet::from_files(&parsed, &files)
 }

@@ -2,8 +2,6 @@
 //! beyond loading the packaged shader set. GPU tests skip without an adapter
 //! unless `NIF_VIEWER_REQUIRE_GPU` is set.
 
-use std::collections::HashMap;
-
 use scene_renderer::wgpu::TextureFormat;
 use scene_renderer::*;
 use scene_types::*;
@@ -48,10 +46,11 @@ fn quad_scene(base_color: [f32; 4]) -> SceneData {
             ..MeshData::default()
         }],
         images: vec![],
-        materials: vec![MaterialDesc {
+        materials: vec![stock::BasicMaterial {
             base_color_factor: base_color,
-            ..MaterialDesc::default()
-        }],
+            ..Default::default()
+        }
+        .into()],
         instances: vec![InstanceDesc::new(0, 0)],
     }
 }
@@ -101,7 +100,11 @@ fn vertex_colors_apply_only_when_enabled() {
     let mut scene = quad_scene([1.0; 4]);
     scene.meshes[0].colors = Some(vec![[0.0, 1.0, 0.0, 1.0]; 4]);
     let (off, _) = r.upload_scene(&scene).unwrap();
-    scene.materials[0].use_vertex_colors = true;
+    scene.materials[0] = stock::BasicMaterial {
+        use_vertex_colors: true,
+        ..Default::default()
+    }
+    .into();
     let (on, _) = r.upload_scene(&scene).unwrap();
     let off = render(&r, Some(off), &params()).pixel(16, 16);
     let on = render(&r, Some(on), &params()).pixel(16, 16);
@@ -168,7 +171,7 @@ fn textures_bind_with_declared_color_space() {
         ColorSpace::Srgb,
         vec![0, 0, 255, 255],
     ));
-    scene.materials[0].base_color_texture = Some(TextureRef::new(0));
+    scene.materials[0].textures = vec![Some(TextureRef::new(0))];
     let (id, report) = r.upload_scene(&scene).unwrap();
     assert_eq!(report.stats.images, 1);
     let px = render(&r, Some(id), &params()).pixel(16, 16);
@@ -356,11 +359,140 @@ fn zero_sized_views_are_suspended() {
 }
 
 #[test]
-fn shader_abi_mismatch_is_rejected() {
-    let manifest = ShaderManifest {
-        abi_version: SHADER_ABI_VERSION + 1,
-        profile: "x".into(),
-        files: HashMap::new(),
+fn shader_abi_mismatch_and_missing_stages_are_rejected() {
+    let manifest = format!(
+        r#"{{"abi_version":{},"files":{{}}}}"#,
+        SHADER_ABI_VERSION + 1
+    );
+    assert!(ShaderManifest::parse(&manifest).is_err());
+
+    // A material-only set cannot construct a renderer.
+    let materials_only = format!(
+        r#"{{"abi_version":{},"materials":{{}}}}"#,
+        SHADER_ABI_VERSION
+    );
+    let set = ShaderSet::load_with(&materials_only, |_| Ok(String::new())).unwrap();
+    if let Ok(ctx) = futures::executor::block_on(GpuContext::new_offscreen(&ContextDesc::default()))
+    {
+        let err = Renderer::new(&ctx, &set, RendererDesc::new(TextureFormat::Rgba8UnormSrgb)).err();
+        assert!(matches!(err, Some(RendererError::Shader(_))));
+    }
+}
+
+const UNLIT: &str = r#"
+struct Unlit { colour: vec4<f32> }
+@group(0) @binding(0)
+var<uniform> unlit: Unlit;
+
+@vertex
+fn vertex_main(model: VertexInput, instance: InstanceInput) -> VertexOutput {
+    return standard_vertex(model, instance);
+}
+
+@fragment
+fn fragment_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return unlit.colour;
+}
+"#;
+
+fn unlit_type() -> MaterialTypeDesc {
+    MaterialTypeDesc {
+        key: "test-unlit".into(),
+        source: UNLIT.into(),
+        textures: vec![],
+        uniform_size: 16,
+        default_uniforms: vec![0; 16],
+    }
+}
+
+fn unlit(colour: [f32; 4]) -> MaterialDesc {
+    MaterialDesc {
+        name: "unlit".into(),
+        material_type: "test-unlit".into(),
+        uniforms: colour.iter().flat_map(|v| v.to_le_bytes()).collect(),
+        ..MaterialDesc::default()
+    }
+}
+
+#[test]
+fn custom_material_type_renders_its_own_shader() {
+    let Some(mut r) = renderer(TextureFormat::Rgba8UnormSrgb) else {
+        return;
     };
-    assert!(ShaderSet::new(&manifest, HashMap::new()).is_err());
+    assert_eq!(r.material_types().collect::<Vec<_>>(), [BASIC_MATERIAL]);
+    r.register_material_type(&unlit_type()).unwrap();
+    let mut scene = quad_scene([1.0; 4]);
+    scene.materials[0] = unlit([0.0, 0.0, 1.0, 1.0]);
+    let (id, _) = r.upload_scene(&scene).unwrap();
+    // Linear 1.0 blue, no lighting, sRGB-encoded output.
+    assert_eq!(
+        render(&r, Some(id), &params()).pixel(16, 16),
+        [0, 0, 255, 255]
+    );
+}
+
+#[test]
+fn scenes_mix_material_types() {
+    let Some(mut r) = renderer(TextureFormat::Rgba8UnormSrgb) else {
+        return;
+    };
+    r.register_material_type(&unlit_type()).unwrap();
+    let mut scene = quad_scene([1.0, 0.0, 0.0, 1.0]);
+    scene.materials.push(unlit([0.0, 1.0, 0.0, 1.0]));
+    // Interleave types so the sorted draw order differs from instance order.
+    let at = |x: f32, material: usize| InstanceDesc {
+        transform: [
+            [0.25, 0.0, 0.0, 0.0],
+            [0.0, 0.25, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [x, 0.0, 0.0, 1.0],
+        ],
+        ..InstanceDesc::new(0, material)
+    };
+    scene.instances = vec![at(-0.6, 0), at(0.0, 1), at(0.6, 0)];
+    let (id, report) = r.upload_scene(&scene).unwrap();
+    assert_eq!(report.stats.materials, 2);
+    let image = render(&r, Some(id), &params());
+    let [lr, lg, _, _] = image.pixel(9, 16);
+    let [rr, rg, _, _] = image.pixel(22, 16);
+    assert!(
+        lr > lg + 100 && rr > rg + 100,
+        "basic quads: {:?} {:?}",
+        image.pixel(9, 16),
+        image.pixel(22, 16)
+    );
+    assert_eq!(image.pixel(16, 16), [0, 255, 0, 255]);
+}
+
+#[test]
+fn material_type_errors_are_reported() {
+    let Some(mut r) = renderer(TextureFormat::Rgba8UnormSrgb) else {
+        return;
+    };
+    let mut scene = quad_scene([1.0; 4]);
+    scene.materials[0] = unlit([1.0; 4]);
+    assert!(matches!(
+        r.upload_scene(&scene),
+        Err(RendererError::Scene(SceneError::UnknownMaterialType { .. }))
+    ));
+
+    r.register_material_type(&unlit_type()).unwrap();
+    assert!(matches!(
+        r.register_material_type(&unlit_type()),
+        Err(RendererError::Shader(_))
+    ));
+    scene.materials[0].uniforms.truncate(8);
+    assert!(matches!(
+        r.upload_scene(&scene),
+        Err(RendererError::Scene(SceneError::MaterialBinding { .. }))
+    ));
+
+    let broken = MaterialTypeDesc {
+        key: "broken".into(),
+        source: "fn fragment_main( {".into(),
+        ..unlit_type()
+    };
+    let err = r.register_material_type(&broken).unwrap_err();
+    assert!(err.to_string().contains("broken"), "{}", err);
+    assert!(!r.material_types().any(|k| k == "broken"));
 }

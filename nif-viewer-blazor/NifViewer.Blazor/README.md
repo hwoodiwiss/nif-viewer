@@ -131,9 +131,10 @@ still appear with their type and size (`fields: { "skipped": true }`).
 
 ## Asset serving note
 
-The renderer loads `shaders/manifest.json` and the WGSL files it lists from
-`_content/NifViewer.Blazor/shaders/`, using a URL derived from the interop
+The renderer loads its shader package (`shaders/manifest.json`) and the NIF
+material package (`materials/nif/manifest.json`) and the WGSL files they list
+from `_content/NifViewer.Blazor/`, using URLs derived from the interop
 module's own location. No host configuration or global `fetch` patching is
-needed, and the host's own `shaders/` or `resources/` paths are not affected.
-The manifest declares a shader ABI version; a mismatched or missing manifest
-makes `AttachAsync` throw with the offending URL.
+needed, and the host's own `shaders/`, `materials/` or `resources/` paths are
+not affected. Each manifest declares a shader ABI version; a mismatched or
+missing manifest makes `AttachAsync` throw with the offending URL.

@@ -25,6 +25,11 @@ module.exports = {
           from: "../scene-renderer/shaders",
           to: "shaders",
         },
+        {
+          // NIF material package (bethesda-pbr) from nif-scene.
+          from: "../nif-scene/shaders",
+          to: "materials/nif",
+        },
       ],
     }),
   ],

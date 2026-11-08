@@ -156,42 +156,69 @@ pub enum AlphaMode {
     Blend,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ShadingModel {
-    /// Cook-Torrance GGX with a packed ORM texture (R=AO, G=roughness, B=metalness).
-    MetallicRoughness,
-}
+/// Key of the stock diffuse + normal-map material shipped with the renderer.
+pub const BASIC_MATERIAL: &str = "basic";
 
+/// An instance of a registered material type.
+///
+/// The renderer owns the frame (passes, camera, lights, vertex layout, output
+/// encoding); a material type owns its shader and declares its bindings via
+/// [`MaterialTypeDesc`]. Materials refer to their type by string key so scenes
+/// stay serialisable and renderer-independent, and draws can be batched by type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaterialDesc {
     pub name: String,
-    pub shading: ShadingModel,
-    /// Linear RGBA multiplier on the base colour texture.
-    pub base_color_factor: [f32; 4],
-    pub base_color_texture: Option<TextureRef>,
-    pub normal_texture: Option<TextureRef>,
-    /// Packed occlusion/roughness/metallic, linear.
-    pub orm_texture: Option<TextureRef>,
+    /// Key of a material type registered with the renderer.
+    pub material_type: String,
+    /// One entry per [`MaterialTypeDesc::textures`] slot. Missing or `None`
+    /// entries use the slot's fallback texel.
+    pub textures: Vec<Option<TextureRef>>,
+    /// Uniform block bytes, exactly [`MaterialTypeDesc::uniform_size`] long, or
+    /// empty to use [`MaterialTypeDesc::default_uniforms`].
+    pub uniforms: Vec<u8>,
     pub alpha_mode: AlphaMode,
     pub double_sided: bool,
-    /// Multiply base colour by the mesh's vertex colours.
-    pub use_vertex_colors: bool,
 }
 
 impl Default for MaterialDesc {
     fn default() -> Self {
         Self {
             name: String::new(),
-            shading: ShadingModel::MetallicRoughness,
-            base_color_factor: [1.0; 4],
-            base_color_texture: None,
-            normal_texture: None,
-            orm_texture: None,
+            material_type: BASIC_MATERIAL.to_string(),
+            textures: Vec::new(),
+            uniforms: Vec::new(),
             alpha_mode: AlphaMode::Opaque,
             double_sided: true,
-            use_vertex_colors: false,
         }
     }
+}
+
+/// A texture binding declared by a material type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextureSlot {
+    pub name: String,
+    /// Required colour space of images bound to this slot.
+    pub color_space: ColorSpace,
+    /// RGBA8 texel used when a material leaves the slot empty.
+    pub fallback: [u8; 4],
+}
+
+/// A material type: WGSL source plus its binding declaration.
+///
+/// Group 0 belongs to the material. Texture slot `i` binds its texture at
+/// `@binding(2 * i)` and sampler at `@binding(2 * i + 1)`; a non-empty uniform
+/// block follows at `@binding(2 * textures.len())`. The renderer prepends its
+/// prelude (frame/light groups, vertex/instance inputs, helpers) to `source`,
+/// which must define `vertex_main` and `fragment_main`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaterialTypeDesc {
+    pub key: String,
+    pub source: String,
+    pub textures: Vec<TextureSlot>,
+    /// Uniform block size in bytes: 0 (no block) or a multiple of 16.
+    pub uniform_size: usize,
+    /// Used when a material supplies no uniform bytes.
+    pub default_uniforms: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
