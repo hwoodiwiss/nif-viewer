@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
 @inject NifViewerInterop Interop
 
 <canvas id="@Id" style="@Style"></canvas>
@@ -12,12 +13,30 @@
     [Parameter]
     public string Style { get; set; } = "width: 100%; aspect-ratio: 16/9;";
 
+    /// <summary>
+    /// Raised when the viewer cannot start (for example, no WebGPU adapter or
+    /// missing shader assets). The message is also kept in <see cref="InitializationError"/>.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnInitializationFailed { get; set; }
+
+    /// <summary>The initialisation failure message, or null if the viewer started or is still starting.</summary>
+    public string? InitializationError { get; private set; }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            await Interop.InitializeAsync();
-            await Interop.AttachAsync(Id);
+            try
+            {
+                await Interop.InitializeAsync();
+                await Interop.AttachAsync(Id);
+            }
+            catch (JSException ex)
+            {
+                InitializationError = ex.Message;
+                await OnInitializationFailed.InvokeAsync(ex.Message);
+            }
         }
     }
 
@@ -28,4 +47,7 @@
     public Task SetCameraSpeedAsync(float speed) => Interop.SetCameraSpeedAsync(speed);
 
     public Task SetLightAsync(NifLightSettings settings) => Interop.SetLightAsync(settings);
+
+    /// <summary>Viewer lifecycle state and the latest load's progress.</summary>
+    public Task<NifViewerStatus> GetStatusAsync() => Interop.GetStatusAsync();
 }

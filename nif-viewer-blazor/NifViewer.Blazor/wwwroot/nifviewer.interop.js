@@ -5,40 +5,31 @@ import initWasm, * as wasm from "./nif_viewer_lib.js";
 
 let initialized = false;
 
-// The Rust code fetches "shaders/*.wgsl" and "resources/cube/*" with relative
-// URLs (resolved against the host page). Those files ship as static web
-// assets under _content/NifViewer.Blazor/, so patch window.fetch to redirect
-// such requests there. Idempotent.
-function installAssetRedirect() {
-  if (window.__nifViewerFetchPatched) return;
-  window.__nifViewerFetchPatched = true;
-  const base = new URL(".", import.meta.url); // .../_content/NifViewer.Blazor/
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = (input, init) => {
-    try {
-      const url = typeof input === "string" ? input : input.url;
-      const m = /^(?:\.\/)?((?:shaders|resources)\/.+)$/.exec(url);
-      if (m) {
-        return originalFetch(new URL(m[1], base).toString(), init);
-      }
-    } catch {
-      /* fall through to the original fetch */
-    }
-    return originalFetch(input, init);
-  };
-}
+// Renderer shaders and the NIF material package ship beside this module as
+// static web assets under _content/NifViewer.Blazor/{shaders,materials/nif}/.
+// They are located from this module's URL, so no global fetch redirection is
+// needed.
+const shaderBaseUrl = new URL("./shaders/", import.meta.url).href;
+const materialBaseUrl = new URL("./materials/nif/", import.meta.url).href;
 
 export async function init() {
   if (!initialized) {
-    installAssetRedirect();
     await initWasm();
     initialized = true;
   }
 }
 
+// Resolves once the GPU device, shaders and pipelines are ready; rejects
+// with the initialisation error otherwise.
 export async function attach(canvasId) {
   await init();
-  wasm.attach(canvasId);
+  await wasm.attach(canvasId, shaderBaseUrl, materialBaseUrl);
+}
+
+// { state, error, load: { ticket, name, state, error, diagnostics } }
+export async function getStatus() {
+  await init();
+  return wasm.viewer_status();
 }
 
 export async function setCameraSpeed(speed) {
@@ -125,5 +116,6 @@ export async function loadNif(name, nifBytes, resolverRef) {
   }
 
   const unresolved = wasm.load_session_finish();
-  return { missing: unresolved };
+  const status = wasm.viewer_status();
+  return { missing: unresolved, ticket: status.load.ticket };
 }

@@ -65,6 +65,39 @@ renderer's):
 Moving the azimuth or elevation slider turns auto-orbit off, matching the
 standalone webapp's behaviour.
 
+## Readiness and load status
+
+`AttachAsync` completes once the GPU device, shaders and pipelines are ready,
+and throws if WebGPU or the shader assets are unavailable. `NifViewerCanvas`
+calls it on first render and reports failures without throwing:
+
+```razor
+<NifViewerCanvas @ref="_viewer" OnInitializationFailed="m => _error = m" />
+```
+
+`LoadNifAsync` completes when the model is
+converted and queued; observe upload and the first rendered frame with
+`GetStatusAsync`:
+
+```csharp
+var result = await _viewer.LoadNifAsync("gun.nif", nifBytes, resolver);
+var status = await _viewer.GetStatusAsync();
+if (status.Load.Ticket == result.LoadTicket && status.Load.State == "failed")
+{
+    Console.WriteLine(status.Load.Error); // the previous model is still shown
+}
+foreach (var diagnostic in status.Load.Diagnostics)
+{
+    Console.WriteLine(diagnostic); // e.g. "texture not found: textures/foo_n.dds"
+}
+```
+
+`State` values: `queued` → `uploaded` → `rendered` (first frame submitted —
+not proof of correct visual output), or `failed` / `superseded`. Missing
+dependencies are still reported through `NifLoadResult.Missing`.
+
+See `CHANGELOG.md` for the full list of public API changes per version.
+
 ## Structure introspection
 
 `NifStructureView` renders the raw block graph of a NIF (header summary plus
@@ -98,10 +131,10 @@ still appear with their type and size (`fields: { "skipped": true }`).
 
 ## Asset serving note
 
-The wasm renderer fetches `shaders/*.wgsl` and `resources/cube/*` with
-relative URLs at startup. These files ship inside this package as static web
-assets under `_content/NifViewer.Blazor/`, and the interop module installs a
-small `window.fetch` patch that transparently redirects `shaders/...` and
-`resources/...` requests there — no host configuration is needed. If your app
-serves its own files under top-level `shaders/` or `resources/` paths, those
-will be shadowed by the redirect; rename them or serve them elsewhere.
+The renderer loads its shader package (`shaders/manifest.json`) and the NIF
+material package (`materials/nif/manifest.json`) and the WGSL files they list
+from `_content/NifViewer.Blazor/`, using URLs derived from the interop
+module's own location. No host configuration or global `fetch` patching is
+needed, and the host's own `shaders/`, `materials/` or `resources/` paths are
+not affected. Each manifest declares a shader ABI version; a mismatched or
+missing manifest makes `AttachAsync` throw with the offending URL.

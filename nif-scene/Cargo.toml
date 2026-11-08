@@ -1,0 +1,21 @@
+[package]
+name = "nif-scene"
+version = "0.1.0"
+authors = ["Hugo Woodiwiss <hj.woodiwiss@gmail.com>"]
+edition = "2018"
+description = "Bethesda NIF/.mesh/.mat parsing, staged dependency loading and NIF to scene-types conversion."
+license = "MIT"
+
+[dependencies]
+scene-types = { path = "../scene-types", version = "0.1.0" }
+log = "0.4"
+anyhow = "1.0"
+serde_json = "1"
+bitflags = "2.13.1"
+half = "2"
+thiserror = "2"
+ddsfile = "0.5"
+bcdec_rs = "0.1"
+
+[dev-dependencies]
+env_logger = "0.11.6"

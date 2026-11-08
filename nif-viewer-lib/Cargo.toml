@@ -7,28 +7,19 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-image = { version = "0.25.10", default-features = false, features = [
-	"jpeg",
-	"png",
-	"tga",
-] }
-winit = { version = "0.30.13" }
-cgmath = "0.18"
-env_logger = "0.11.6"
+nif-scene = { path = "../nif-scene", version = "0.1.0" }
+scene-types = { path = "../scene-types", version = "0.1.0" }
+scene-renderer = { path = "../scene-renderer", version = "0.1.0" }
+scene-viewer = { path = "../scene-viewer", version = "0.1.0" }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 log = "0.4"
 futures = "0.3"
-wgpu = { version = "29.0.0", features = ["std"] }
-bytemuck = { version = "1.25.0", features = ["derive"] }
 anyhow = "1.0"
-tobj = { version = "4.0.3", features = ["futures"] }
-half = "2"
 serde_json = "1"
-ddsfile = "0.5"
-bcdec_rs = "0.1"
-bitflags = "2.13.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4.64"
 js-sys = "0.3.74"
 web-sys = { version = "0.3.72", features = [
 	"Blob",
@@ -39,24 +30,16 @@ web-sys = { version = "0.3.72", features = [
 	"HtmlCanvasElement",
 	"HtmlElement",
 	"Node",
-	"Response",
 	"Url",
 	"Window",
 ] }
 console_error_panic_hook = "0.1.6"
 console_log = "1"
-wasm-bindgen-futures = "0.4.64"
-# getrandom 0.2 fix for tobj's dependency chain
+# getrandom 0.2 / 0.3 wasm backends, in case transitive dependencies pull them in
+# (getrandom 0.3 also needs the getrandom_backend="wasm_js" rustflag in .cargo/config.toml)
 getrandom = { version = "0.2.17", features = ["js"] }
-# getrandom 0.3 (pulled in via ahash -> tobj) requires both the wasm_js feature
-# and the getrandom_backend="wasm_js" rustflag (set in .cargo/config.toml)
 getrandom3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
-
-[build-dependencies]
-anyhow = "1.0"
-fs_extra = "1.2"
-glob = "0.3"
-
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+

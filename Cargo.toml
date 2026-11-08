@@ -1,7 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
+    "scene-types",
+    "scene-renderer",
+    "scene-viewer",
+    "nif-scene",
     "nif-viewer-lib",
     "nif-viewer-app",
 ]
-default-members = ["nif-viewer-lib", "nif-viewer-app"]
+default-members = ["scene-types", "scene-renderer", "scene-viewer", "nif-scene", "nif-viewer-lib", "nif-viewer-app"]

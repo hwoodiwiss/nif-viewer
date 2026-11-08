@@ -1,0 +1,21 @@
+[package]
+name = "scene-viewer"
+version = "0.1.0"
+authors = ["Hugo Woodiwiss <hj.woodiwiss@gmail.com>"]
+edition = "2018"
+description = "Optional interactive viewer host for scene-renderer: window/canvas presentation, navigation and commands."
+license = "MIT"
+
+[dependencies]
+scene-types = { path = "../scene-types", version = "0.1.0" }
+scene-renderer = { path = "../scene-renderer", version = "0.1.0", default-features = false }
+winit = { version = "0.30.13" }
+cgmath = "0.18"
+log = "0.4"
+futures = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4.64"
+js-sys = "0.3.74"
+web-sys = { version = "0.3.72", features = ["HtmlCanvasElement", "Response", "Window"] }

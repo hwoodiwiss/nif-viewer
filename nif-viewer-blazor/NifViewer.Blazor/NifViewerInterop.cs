@@ -22,7 +22,11 @@ public sealed class NifViewerInterop(IJSRuntime jsRuntime) : IAsyncDisposable
         await module.InvokeVoidAsync("init");
     }
 
-    /// <summary>Starts the renderer attached to the canvas with the given element id.</summary>
+    /// <summary>
+    /// Starts the renderer attached to the canvas with the given element id.
+    /// Completes once the GPU device, shaders and pipelines are ready; throws a
+    /// <see cref="JSException"/> if initialisation fails (for example, no WebGPU adapter).
+    /// </summary>
     public async Task AttachAsync(string canvasId)
     {
         await InitializeAsync();
@@ -30,16 +34,26 @@ public sealed class NifViewerInterop(IJSRuntime jsRuntime) : IAsyncDisposable
         await module.InvokeVoidAsync("attach", canvasId);
     }
 
+    /// <summary>Returns the viewer lifecycle state and the latest load's progress.</summary>
+    public async Task<NifViewerStatus> GetStatusAsync()
+    {
+        await InitializeAsync();
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<NifViewerStatus>("getStatus");
+    }
+
     /// <summary>
     /// Loads a NIF model, resolving external dependencies (meshes, materials,
-    /// textures) through <paramref name="resolver"/> if provided.
+    /// textures) through <paramref name="resolver"/> if provided. Completes when
+    /// the model has been converted and queued for upload; track upload and first
+    /// frame with <see cref="GetStatusAsync"/> and <see cref="NifLoadResult.LoadTicket"/>.
     /// </summary>
     public async Task<NifLoadResult> LoadNifAsync(string name, byte[] nif, INifDependencyResolver? resolver = null)
     {
         var module = await GetModuleAsync();
         using var resolverRef = resolver is null ? null : DotNetObjectReference.Create(new ResolverBridge(resolver));
         var result = await module.InvokeAsync<LoadResultDto>("loadNif", name, nif, resolverRef);
-        return new NifLoadResult(result.Missing ?? []);
+        return new NifLoadResult(result.Missing ?? []) { LoadTicket = result.Ticket };
     }
 
     public async Task SetCameraSpeedAsync(float speed)
@@ -87,7 +101,7 @@ public sealed class NifViewerInterop(IJSRuntime jsRuntime) : IAsyncDisposable
         }
     }
 
-    private sealed record LoadResultDto(string[]? Missing);
+    private sealed record LoadResultDto(string[]? Missing, long Ticket);
 
     /// <summary>Exposes an <see cref="INifDependencyResolver"/> to JS.</summary>
     private sealed class ResolverBridge(INifDependencyResolver resolver)

@@ -2,15 +2,21 @@
 
   <!--
     Rebuilds nif-viewer-lib/pkg-web (wasm-pack, target=web) when any Rust
-    source, manifest, or runtime shader is newer than the wasm output, so the
-    packaged static web assets can never go stale. Incremental via MSBuild
-    Inputs/Outputs timestamp comparison; the actual cargo build inside
+    source or manifest of the library or the nif-scene and scene-* crates it
+    depends on is newer than the wasm output, so the packaged static web
+    assets can never go stale. Shader-only edits are packaged directly from
+    scene-renderer/shaders and do not require a wasm rebuild. Incremental via
+    MSBuild Inputs/Outputs timestamp comparison; the actual cargo build inside
     wasm-pack is itself incremental.
   -->
   <ItemGroup>
     <NifViewerWasmInput Include="$(NifViewerRustLibDir)src\**\*.rs" />
     <NifViewerWasmInput Include="$(NifViewerRustLibDir)Cargo.toml" />
     <NifViewerWasmInput Include="$(NifViewerRustLibDir)build.rs" Condition="Exists('$(NifViewerRustLibDir)build.rs')" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)nif-scene\src\**\*.rs;$(NifViewerRepoRoot)nif-scene\Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)scene-types\src\**\*.rs;$(NifViewerRepoRoot)scene-types\Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)scene-renderer\src\**\*.rs;$(NifViewerRepoRoot)scene-renderer\Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)scene-viewer\src\**\*.rs;$(NifViewerRepoRoot)scene-viewer\Cargo.toml" />
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.toml" />
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.lock" Condition="Exists('$(NifViewerRepoRoot)Cargo.lock')" />
   </ItemGroup>

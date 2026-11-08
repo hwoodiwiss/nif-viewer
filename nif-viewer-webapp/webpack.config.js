@@ -21,8 +21,14 @@ module.exports = {
           noErrorOnMissing: true,
         },
         {
-          from: "../shaders",
+          // Staged from the renderer package: manifest.json + WGSL.
+          from: "../scene-renderer/shaders",
           to: "shaders",
+        },
+        {
+          // NIF material package (bethesda-pbr) from nif-scene.
+          from: "../nif-scene/shaders",
+          to: "materials/nif",
         },
       ],
     }),
