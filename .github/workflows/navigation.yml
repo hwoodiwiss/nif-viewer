@@ -1,0 +1,49 @@
+name: navigation
+on: [pull_request, workflow_dispatch]
+jobs:
+  native:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev
+      - run: cargo test -p scene-navigation
+      - run: cargo test -p nif-viewer-lib
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+  browser:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo install wasm-pack --locked
+      - run: wasm-pack build --release --target web --out-dir pkg-web
+        working-directory: nif-viewer-lib
+      - run: wasm-pack build --release --target bundler --out-dir pkg
+        working-directory: nif-viewer-lib
+      - run: npm ci
+        working-directory: nif-viewer-webapp
+      - run: npx playwright install chromium
+        working-directory: nif-viewer-webapp
+      - run: npm run build
+        working-directory: nif-viewer-webapp
+      - run: npm run test:navigation
+        working-directory: nif-viewer-webapp
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-navigation
+          path: |
+            nif-viewer-webapp/playwright-report/
+            nif-viewer-webapp/test-results/
+          retention-days: 14

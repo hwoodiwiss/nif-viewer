@@ -21,6 +21,7 @@ pub use handle::{LightSettings, LoadTicket, ViewerEvent, ViewerHandle, ViewerSta
 pub use presenter::{Acquire, SurfacePresenter};
 pub use viewer::{Viewer, ViewerConfig};
 
+pub use scene_navigation;
 pub use scene_renderer;
 pub use scene_types;
 pub use winit;

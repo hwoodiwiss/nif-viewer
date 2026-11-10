@@ -4,6 +4,8 @@
   "description": "A web app for testing the wasm32 target for nif-viewer-lib",
   "main": "index.js",
   "scripts": {
+    "test:navigation": "playwright test",
+    "test:blazor": "playwright test --config playwright.blazor.config.mjs",
     "build": "webpack --config webpack.config.js",
     "start": "webpack-dev-server"
   },
@@ -11,7 +13,8 @@
   "devDependencies": {
     "copy-webpack-plugin": "^14.0.0",
     "prettier": "^3.8.3",
-    "puppeteer-core": "^24.43.1",
+    "@playwright/test": "1.63.0",
+    "pngjs": "^7.0.0",
     "webpack": "^5.107.2",
     "webpack-cli": "^7.0.3",
     "webpack-dev-server": "^5.2.4"

@@ -1,5 +1,26 @@
 # NifViewer.Blazor changelog
 
+## 0.1.0-preview.10
+
+Adds keyboard, mouse and controller navigation via the shared
+`scene-navigation` crate. Rendering output is unchanged.
+
+### C# API
+
+| Member | Kind | Details |
+|---|---|---|
+| `NifViewerCanvas` | Changed | Renders a host `<div id="{Id}-host">`; the canvas with `Id` is created inside it by JS. Implements `IAsyncDisposable` and detaches navigation input on disposal. |
+| `NifViewerCanvas.SetNavigationSettingsAsync`, `GetNavigationStatusAsync`, `NavigationCommandAsync` | Added | Units/second navigation settings, status and commands such as `Frame`/`Reset`. |
+| `NifViewerInterop.SetNavigationSettingsAsync`, `NavigationCommandAsync`, `GetNavigationStatusAsync`, `SetNavigationBindingsAsync` | Added | |
+| `NifNavigationSettings`, `NifNavigationStatus` | Added | |
+| `SetCameraSpeedAsync` | Changed | Legacy per-frame speed, converted to units/second at 60 Hz. |
+
+### WASM exports
+
+| Export | Kind |
+|---|---|
+| `set_navigation_settings`, `navigation_command`, `navigation_status`, `set_navigation_bindings`, `navigation_attach`, `navigation_detach` | Added |
+
 ## 0.1.0-preview.9
 
 No C# API changes. Rendering output is unchanged (same regression baselines).

@@ -138,3 +138,19 @@ module's own location. No host configuration or global `fetch` patching is
 needed, and the host's own `shaders/`, `materials/` or `resources/` paths are
 not affected. Each manifest declares a shader ABI version; a mismatched or
 missing manifest makes `AttachAsync` throw with the offending URL.
+
+## Navigation (preview.10)
+
+`NifViewerCanvas` supports keyboard, mouse and standard-mapped controllers. Its
+input attachment is automatically deactivated on component disposal, with a
+generation token protecting a newer canvas attachment from stale disposal.
+
+Use `SetNavigationSettingsAsync(new NifNavigationSettings { Speed = 25,
+AutomaticSpeed = false })` for units/second configuration. Existing
+`SetCameraSpeedAsync(0.2f)` remains a legacy adapter equivalent to 12 units/second.
+`NavigationCommandAsync("Frame")` and `NavigationCommandAsync("Reset")` recover
+a useful view. `GetNavigationStatusAsync()` returns actual settings/device status.
+`NifViewerControls` shows mode, speed, help and navigation status.
+
+Mouse capture is requested by L in the canvas's browser event handler. Escape/B
+releases navigation; Tab leaves the canvas. Pairing/file selection remains host UI.

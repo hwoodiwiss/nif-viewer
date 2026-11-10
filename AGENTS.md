@@ -12,6 +12,8 @@ changing the library, its tests, or the Blazor package.
   batching, capture, and its shader package (`scene-renderer/shaders`: prelude/material ABI,
   compose, stock `basic` material; ABI version in `src/shaders.rs`).
 - `scene-viewer`: optional window/canvas host, navigation, `ViewerHandle` commands/status.
+- `crates/scene-navigation`: renderer-independent keyboard/mouse/controller navigation
+  (native and browser input), used by `scene-viewer`.
 - `nif-scene`: NIF parsing, dependency sessions, NIF → scene conversion, the `bethesda-pbr`
   material type (`nif-scene/shaders`), native data-folder resolution. See its scoped
   `AGENTS.md` and `tests/AGENTS.md`.

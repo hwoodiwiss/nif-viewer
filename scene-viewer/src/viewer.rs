@@ -6,12 +6,12 @@ use scene_renderer::{
     SceneId, ShaderSet, ViewDesc,
 };
 use scene_types::{Camera, MaterialTypeDesc, ViewParams};
-use winit::event::WindowEvent;
+use winit::event::{DeviceEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
 use crate::handle::{LightSettings, LoadTicket, ViewerEvent, ViewerHandle, ViewerState};
-use crate::navigation::CameraController;
+use crate::navigation::{aspect_of, Bounds, CameraController};
 use crate::presenter::{Acquire, SurfacePresenter};
 
 /// Options for a [`Viewer`].
@@ -99,6 +99,7 @@ impl Viewer {
             render_scale: config.render_scale,
         })?;
         let (captures_tx, captures_rx) = mpsc::channel();
+        let controller = CameraController::new(window.clone(), &config.camera, config.camera_speed);
         Ok(Self {
             window,
             ctx,
@@ -108,7 +109,7 @@ impl Viewer {
             scene: None,
             first_frame: None,
             camera: config.camera,
-            controller: CameraController::new(config.camera_speed),
+            controller,
             light: config.light,
             config,
             handle,
@@ -146,6 +147,16 @@ impl Viewer {
         } else {
             ViewerState::Ready
         });
+    }
+
+    /// Feed a raw device event (captured mouse motion).
+    pub fn handle_device_event(&mut self, event: &DeviceEvent) {
+        self.controller.device_event(event);
+    }
+
+    /// Release navigation input, e.g. when the application is suspended.
+    pub fn deactivate_navigation(&mut self) {
+        self.controller.deactivate();
     }
 
     /// Feed a window event. Returns true when it was consumed.
@@ -190,7 +201,15 @@ impl Viewer {
                         if let Some(bounds) = pending.scene.bounds() {
                             let radius = bounds.radius();
                             self.camera = Camera::framing(bounds.center(), radius);
-                            self.controller.set_speed(radius / 50.0);
+                            if let Some(nav_bounds) = Bounds::new(bounds.center(), radius) {
+                                let aspect = aspect_of(&self.window);
+                                self.controller.set_bounds(
+                                    nav_bounds,
+                                    &mut self.camera,
+                                    aspect,
+                                    true,
+                                );
+                            }
                         }
                     }
                     self.first_frame = Some(pending.ticket);
@@ -210,6 +229,8 @@ impl Viewer {
         }
         if let Some(camera) = commands.camera {
             self.camera = camera;
+            let aspect = aspect_of(&self.window);
+            self.controller.sync_pose(&self.camera, aspect);
         }
         if let Some(speed) = commands.camera_speed {
             self.controller.set_speed(speed);
@@ -242,7 +263,10 @@ impl Viewer {
             let dir: cgmath::Vector3<f32> = self.light.light.direction.into();
             self.light.light.direction = (rotation * dir).into();
         }
-        self.controller.update_camera(&mut self.camera);
+        let aspect = aspect_of(&self.window);
+        if self.controller.update_camera(&mut self.camera, aspect) {
+            self.handle.request_capture("frame");
+        }
 
         let frame = match self.presenter.acquire(&self.ctx) {
             Ok(Acquire::Frame(frame)) => frame,

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use scene_renderer::ShaderSet;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
@@ -100,6 +100,17 @@ impl ViewerApp {
 }
 
 impl ApplicationHandler for ViewerApp {
+    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _id: DeviceId, event: DeviceEvent) {
+        if let Some(viewer) = self.viewer.borrow_mut().as_mut() {
+            viewer.handle_device_event(&event);
+        }
+    }
+
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(viewer) = self.viewer.borrow_mut().as_mut() {
+            viewer.deactivate_navigation();
+        }
+    }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;

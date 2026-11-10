@@ -110,9 +110,11 @@ pub fn run() -> anyhow::Result<()> {
     }
     let model_name = nif_path.unwrap_or_default();
 
+    // SCENE_NAV_SPEED (units/second, read by navigation) takes precedence.
     let cam_speed = std::env::var("NIF_CAM_SPEED")
         .ok()
-        .and_then(|s| s.trim().parse::<f32>().ok());
+        .and_then(|s| s.trim().parse::<f32>().ok())
+        .filter(|_| std::env::var_os("SCENE_NAV_SPEED").is_none());
     let capture_frame = std::env::var("NIF_CAPTURE")
         .ok()
         .and_then(|s| s.parse::<u64>().ok());
@@ -135,7 +137,7 @@ pub fn run() -> anyhow::Result<()> {
         scene_viewer::AppConfig {
             title: "NIF Viewer".into(),
             initial_size: (1920, 1080),
-            exit_on_escape: true,
+            exit_on_escape: false,
         },
         viewer_config(light, material_types),
         shaders,

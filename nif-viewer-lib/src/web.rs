@@ -321,6 +321,38 @@ pub fn set_camera_speed(speed: f32) {
     handle().set_camera_speed(speed);
 }
 
+/// Navigation settings JSON; speed is in world units/second.
+#[wasm_bindgen]
+pub fn set_navigation_settings(json: &str) -> Result<(), JsValue> {
+    scene_viewer::scene_navigation::web::settings(json)
+}
+
+#[wasm_bindgen]
+pub fn navigation_command(action: &str) -> Result<(), JsValue> {
+    scene_viewer::scene_navigation::web::command(action)
+}
+
+#[wasm_bindgen]
+pub fn navigation_status() -> String {
+    scene_viewer::scene_navigation::web::status()
+}
+
+#[wasm_bindgen]
+pub fn set_navigation_bindings(json: &str) -> Result<(), JsValue> {
+    scene_viewer::scene_navigation::web::bindings(json)
+}
+
+/// Returns an attachment generation used to prevent stale component disposal.
+#[wasm_bindgen]
+pub fn navigation_attach() -> Result<u32, JsValue> {
+    scene_viewer::scene_navigation::web::attach()
+}
+
+#[wasm_bindgen]
+pub fn navigation_detach(generation: u32) -> Result<(), JsValue> {
+    scene_viewer::scene_navigation::web::detach(generation)
+}
+
 /// Configure the directional light (applied on the next frame). `r,g,b` are
 /// 0-1 floats, `x,y,z` the light travel direction (normalized internally).
 /// `auto_orbit` slowly rotates the direction about the Y axis.

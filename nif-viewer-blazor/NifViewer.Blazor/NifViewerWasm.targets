@@ -18,6 +18,9 @@
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)scene-renderer\src\**\*.rs;$(NifViewerRepoRoot)scene-renderer\Cargo.toml" />
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)scene-viewer\src\**\*.rs;$(NifViewerRepoRoot)scene-viewer\Cargo.toml" />
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)crates\scene-navigation\src\**\*.rs" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot)crates\scene-navigation\Cargo.toml" />
+    <NifViewerWasmInput Include="$(NifViewerRepoRoot).cargo\config.toml" />
     <NifViewerWasmInput Include="$(NifViewerRepoRoot)Cargo.lock" Condition="Exists('$(NifViewerRepoRoot)Cargo.lock')" />
   </ItemGroup>
 
